@@ -23,15 +23,18 @@ const toolsRoutes = require('./src/routes/tools.routes');
 const PORT = process.env.PORT || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
-/** Allow localhost plus any private-LAN Vite dev origin (port 5173) so phones/tablets on Wi-Fi work without editing .env each time. */
+/** Allow CLIENT_ORIGIN list, Vercel deployments, localhost, and LAN Vite dev. */
 function isAllowedOrigin(origin) {
   if (!origin) return true;
-  const allowed = CLIENT_ORIGIN.split(',').map((s) => s.trim());
+  const allowed = CLIENT_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
   if (allowed.includes(origin)) return true;
   try {
     const url = new URL(origin);
-    if (url.port && url.port !== '5173') return false;
     const host = url.hostname;
+    // Vercel production + preview URLs (each deploy gets a unique subdomain)
+    if (host.endsWith('.vercel.app')) return true;
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+    if (url.port && url.port !== '5173') return false;
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
@@ -55,6 +58,10 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'clarityai-backend', time: new Date().toISOString() });
+});
+
+app.get('/', (req, res) => {
+  res.json({ ok: true, service: 'clarityai-backend', health: '/api/health' });
 });
 
 app.use('/api/auth', authRoutes);
@@ -103,6 +110,7 @@ initSchema()
     });
   })
   .catch((err) => {
-    console.error('[server] failed to initialize database schema:', err);
+    console.error('[server] failed to initialize database schema:', err.message || err);
+    console.error('[server] Check DATABASE_URL on Render (Supabase URI) and DATABASE_SSL=true');
     process.exit(1);
   });
