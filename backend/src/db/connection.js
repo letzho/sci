@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const dns = require('dns');
 require('dotenv').config();
 
 /**
@@ -33,10 +34,24 @@ const useSsl =
   process.env.DATABASE_SSL === 'true' ||
   /supabase\.co|sslmode=require/i.test(connectionString);
 
-const pool = new Pool({
+// Supabase direct hostnames often resolve to IPv6; Render often cannot reach
+// IPv6 (ENETUNREACH). Prefer IPv4 DNS when connecting to Supabase.
+const preferIpv4 =
+  process.env.DATABASE_IPV4 !== 'false' && /supabase\.co/i.test(connectionString);
+
+const poolConfig = {
   connectionString,
   ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-});
+  connectionTimeoutMillis: 15000,
+};
+
+if (preferIpv4) {
+  poolConfig.lookup = (hostname, options, callback) => {
+    dns.lookup(hostname, { ...(options || {}), family: 4 }, callback);
+  };
+}
+
+const pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
   // A dropped idle connection should never crash the whole process -
