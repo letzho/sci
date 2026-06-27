@@ -1,0 +1,42 @@
+.screen {
+  background-image: radial-gradient(circle at 50% 0%, rgba(2, 132, 199, 0.12), transparent 50%);
+}
+
+.stage {
+  box-shadow: 0 20px 50px -24px rgba(2, 16, 36, 0.7);
+}
+
+.waitingAvatar {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+.pip {
+  transition: transform 0.2s ease;
+  box-shadow: 0 8px 18px -8px rgba(2, 16, 36, 0.6);
+}
+
+.pip:hover {
+  transform: scale(1.05);
+}
+
+.controlBtn {
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.controlBtn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.endBtn {
+  transition: transform 0.15s ease;
+}
+
+.endBtn:hover {
+  transform: scale(1.08);
+}

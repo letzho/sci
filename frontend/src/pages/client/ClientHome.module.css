@@ -1,0 +1,48 @@
+.profileRow {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.profileRow:hover {
+  transform: translateX(2px);
+  box-shadow: 0 6px 16px -10px rgba(2, 132, 199, 0.25);
+}
+
+.avatar {
+  transition: transform 0.2s ease;
+}
+
+.profileRow:hover .avatar {
+  transform: scale(1.08);
+}
+
+.repCard {
+  position: relative;
+  overflow: hidden;
+}
+
+.repCard::after {
+  content: '';
+  position: absolute;
+  top: -30%;
+  right: -10%;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 70%);
+}
+
+.actionBtn {
+  transition: transform 0.15s ease;
+}
+
+.actionBtn:hover {
+  transform: translateY(-2px);
+}
+
+.policyRow {
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+.policyRow:hover {
+  transform: translateX(2px);
+}

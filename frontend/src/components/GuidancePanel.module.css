@@ -1,0 +1,44 @@
+.flagCard {
+  border-left: 3px solid #f43f5e;
+  box-shadow: 0 6px 16px -10px rgba(244, 63, 94, 0.35);
+}
+
+.pointCard {
+  border-left: 3px solid #0284c7;
+  box-shadow: 0 6px 16px -10px rgba(2, 132, 199, 0.3);
+}
+
+.explainerCard {
+  border-left: 3px solid #38bdf8;
+  background-image: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(2, 132, 199, 0.03));
+  position: relative;
+  overflow: hidden;
+}
+
+.explainerCard::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -20%;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.25), transparent 70%);
+}
+
+.speakBtn {
+  transition: transform 0.15s ease;
+}
+
+.speakBtn:hover {
+  transform: scale(1.15);
+}
+
+.emptyState {
+  animation: pulseFade 2.4s ease-in-out infinite;
+}
+
+@keyframes pulseFade {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}

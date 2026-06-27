@@ -1,0 +1,90 @@
+.refreshBtn {
+  transition: transform 0.4s ease;
+}
+
+.refreshBtn:hover {
+  transform: rotate(180deg);
+}
+
+.resumeRow {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.resumeRow:hover {
+  transform: translateX(2px);
+}
+
+.customerCard {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.customerCard:hover {
+  box-shadow: 0 14px 28px -16px rgba(2, 132, 199, 0.3);
+  transform: translateY(-3px);
+}
+
+.avatar {
+  transition: transform 0.2s ease;
+}
+
+.customerCard:hover .avatar {
+  transform: scale(1.08);
+}
+
+.channelBtn {
+  transition: transform 0.15s ease;
+}
+
+.channelBtn:hover {
+  transform: translateY(-2px);
+}
+
+.progressCard {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 65%);
+  border-color: #fde68a;
+  animation: fadeInUp 0.35s ease both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.progressGlow {
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 160px;
+  height: 160px;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.35), transparent 70%);
+  border-radius: 50%;
+  animation: floatGlow 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes floatGlow {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-10px, 10px) scale(1.08);
+  }
+}
+
+.progressTrack {
+  position: relative;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 9999px;
+  background-image: linear-gradient(90deg, #f59e0b, #fb7185);
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}

@@ -1,0 +1,38 @@
+.mark {
+  transition: transform 0.25s ease;
+  border-radius: 28%;
+  object-fit: cover;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+.mark:hover {
+  transform: rotate(-4deg) scale(1.05);
+}
+
+.wordmark {
+  background: linear-gradient(90deg, #0c4a6e, #0284c7 60%, #38bdf8);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.wordmarkLight {
+  color: #ffffff;
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.25);
+}
+
+.tagline {
+  position: relative;
+}
+
+.tagline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.4;
+}

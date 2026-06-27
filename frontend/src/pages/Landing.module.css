@@ -1,0 +1,75 @@
+.hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.15), transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(56, 189, 248, 0.2), transparent 45%);
+  pointer-events: none;
+}
+
+.heroContent {
+  position: relative;
+  z-index: 1;
+}
+
+.ctaPrimary {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ctaPrimary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.3);
+}
+
+.ctaSecondary {
+  transition: transform 0.15s ease;
+}
+
+.ctaSecondary:hover {
+  transform: translateY(-2px);
+}
+
+.briefCard {
+  position: relative;
+}
+
+.briefCard::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.4), transparent 60%);
+  z-index: -1;
+}
+
+.solutionCard {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.solutionCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 32px -16px rgba(2, 132, 199, 0.25);
+}
+
+.channelCard {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+}
+
+.channelCard:hover {
+  transform: translateY(-4px);
+}
+
+.channelCard:hover .channelIcon {
+  transform: scale(1.15) rotate(-6deg);
+}
+
+.channelIcon {
+  transition: transform 0.2s ease;
+}

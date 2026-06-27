@@ -1,0 +1,31 @@
+.heroCard {
+  position: relative;
+  overflow: hidden;
+}
+
+.heroCard::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -15%;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2), transparent 70%);
+}
+
+.datesCard {
+  border-left: 3px solid #0284c7;
+}
+
+.coverageRow {
+  transition: background-color 0.15s ease;
+}
+
+.coverageRow:hover {
+  background-color: rgba(2, 132, 199, 0.04);
+}
+
+.infoNotice {
+  border-left: 3px solid #94a3b8;
+}

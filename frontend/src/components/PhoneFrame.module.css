@@ -1,0 +1,25 @@
+.backdrop {
+  background-image: radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.18), transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(255, 255, 255, 0.12), transparent 40%);
+}
+
+.device {
+  box-shadow: 0 30px 60px -20px rgba(2, 16, 36, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.statusBar {
+  backdrop-filter: blur(2px);
+}
+
+.screen {
+  scrollbar-width: thin;
+}
+
+.screen::-webkit-scrollbar {
+  width: 4px;
+}
+
+.screen::-webkit-scrollbar-thumb {
+  background: rgba(2, 132, 199, 0.25);
+  border-radius: 4px;
+}

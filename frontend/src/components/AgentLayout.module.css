@@ -1,0 +1,34 @@
+.header {
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+.navLink {
+  position: relative;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.navLink::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  transform: scaleX(0);
+  transition: transform 0.2s ease;
+}
+
+.navLinkActive::after {
+  transform: scaleX(1);
+}
+
+.logoutBtn {
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.logoutBtn:hover {
+  transform: rotate(8deg);
+}

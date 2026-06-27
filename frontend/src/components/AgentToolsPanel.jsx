@@ -1,0 +1,211 @@
+import { useEffect, useState } from 'react';
+import { BookOpenCheck, Calculator, Coffee, GitCompare, DollarSign, ShieldAlert, ShieldCheck, Sparkles, BarChart3 } from 'lucide-react';
+import api from '../api/client';
+import FinancialCalculator from './FinancialCalculator.jsx';
+import PremiumPredictor from './PremiumPredictor.jsx';
+import InsuranceComparison from './InsuranceComparison.jsx';
+import GuidancePanel from './GuidancePanel.jsx';
+import ObjectionBusterPanel from './ObjectionBusterPanel.jsx';
+import ComplianceGuardTextarea from './ComplianceGuardTextarea.jsx';
+import PlainEnglishInfographic from './PlainEnglishInfographic.jsx';
+import { Badge, Button, Card } from './ui.jsx';
+
+const TABS = [
+  { key: 'guidance', label: 'Guidance', icon: Sparkles },
+  { key: 'objections', label: 'Objections', icon: ShieldAlert },
+  { key: 'compliance', label: 'Compliance', icon: ShieldCheck },
+  { key: 'explain', label: 'Explain', icon: BarChart3 },
+  { key: 'calculator', label: 'Calculator', icon: Calculator },
+  { key: 'premium', label: 'Premium', icon: DollarSign },
+  { key: 'compare', label: 'Compare', icon: GitCompare },
+  { key: 'quiz', label: 'Quiz', icon: BookOpenCheck },
+  { key: 'meet', label: 'Meet', icon: Coffee },
+];
+
+export default function AgentToolsPanel({
+  conversationId,
+  productType,
+  customerName,
+  agentName,
+  socket,
+  history,
+  guidanceError,
+  isSupported,
+  onSpeak,
+}) {
+  const [tab, setTab] = useState('guidance');
+  const [templates, setTemplates] = useState([]);
+  const [quizPreview, setQuizPreview] = useState(null);
+  const [quizResult, setQuizResult] = useState(null);
+  const [inviteSent, setInviteSent] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [draftMessage, setDraftMessage] = useState('');
+
+  useEffect(() => {
+    api.get('/tools/meeting-templates').then((res) => setTemplates(res.data.templates)).catch(() => {});
+    api.get('/tools/quiz', { params: { productType } }).then((res) => setQuizPreview(res.data.quiz)).catch(() => {});
+  }, [productType]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+    const handleQuizResult = ({ grade }) => setQuizResult(grade);
+    socket.on('quiz-result', handleQuizResult);
+    return () => socket.off('quiz-result', handleQuizResult);
+  }, [socket]);
+
+  function sendQuiz() {
+    socket?.emit('quiz-start', { conversationId, productType });
+    setTab('quiz');
+  }
+
+  function sendInvite(template) {
+    socket?.emit('coffee-chat-invite', { conversationId, template, agentName });
+    setSelectedTemplate(template);
+    setInviteSent(true);
+    if (template.suggestQuiz) sendQuiz();
+  }
+
+  function shareCalculator(result) {
+    socket?.emit('share-calculator', { conversationId, result });
+  }
+
+  return (
+    <Card className="p-4 max-h-[85vh] overflow-y-auto">
+      <div className="flex flex-wrap gap-1 mb-3 border-b border-slate-100 pb-2">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${
+              tab === key ? 'bg-brand-100 text-brand-700' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            <Icon size={12} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'guidance' && (
+        <>
+          <p className="text-[11px] text-slate-400 mb-3">Visible to you only — never shown to the customer.</p>
+          {!isSupported && (
+            <p className="text-[11px] text-rose-600 mb-2">Speech recognition is not supported in this browser. Use Chrome on desktop.</p>
+          )}
+          {guidanceError && <p className="text-[11px] text-rose-600 mb-2">{guidanceError}</p>}
+          <GuidancePanel history={history} onSpeak={onSpeak} />
+        </>
+      )}
+
+      {tab === 'objections' && (
+        <ObjectionBusterPanel embedded productType={productType} customerName={customerName} />
+      )}
+
+      {tab === 'compliance' && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-slate-500">Draft a client message — risky phrases highlight in red with compliant rewrites.</p>
+          <ComplianceGuardTextarea
+            value={draftMessage}
+            onChange={(e) => setDraftMessage(e.target.value)}
+            productType={productType}
+            placeholder="Type a draft reply to your client…"
+            rows={4}
+          />
+        </div>
+      )}
+
+      {tab === 'explain' && (
+        <div className="space-y-3">
+          <PlainEnglishInfographic productType={productType} onShare={() => {}} />
+          <InsuranceComparison productType={productType} />
+        </div>
+      )}
+
+      {tab === 'calculator' && <FinancialCalculator onShare={shareCalculator} />}
+
+      {tab === 'premium' && <PremiumPredictor onShare={shareCalculator} />}
+
+      {tab === 'compare' && <InsuranceComparison productType={productType} />}
+
+      {tab === 'quiz' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <BookOpenCheck size={14} className="text-brand-600" />
+            <h3 className="text-sm font-semibold text-slate-700">First-meetup quiz</h3>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Send 2 warm-up questions to {customerName || 'your client'}. AI marks answers and gives feedback you can discuss together.
+          </p>
+          {quizPreview && (
+            <div className="rounded-xl border border-slate-100 p-3 space-y-2 bg-slate-50/50">
+              <div className="text-xs font-semibold text-slate-700">{quizPreview.title}</div>
+              {quizPreview.questions.map((q, i) => (
+                <div key={q.id} className="text-[11px] text-slate-600">
+                  <span className="font-medium text-brand-600">Q{i + 1}.</span> {q.text}
+                </div>
+              ))}
+            </div>
+          )}
+          <Button size="sm" onClick={sendQuiz} className="w-full">
+            Send quiz to client
+          </Button>
+
+          {quizResult && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-emerald-800">Quiz submitted</span>
+                <Badge tone="success">
+                  {quizResult.score}/{quizResult.total}
+                </Badge>
+              </div>
+              {quizResult.results?.map((r) => (
+                <div key={r.questionId} className="text-[11px]">
+                  <span className={r.isCorrect ? 'text-emerald-700' : 'text-amber-700'}>{r.isCorrect ? '✓' : '○'}</span>{' '}
+                  {r.questionText.slice(0, 50)}…
+                  {!r.isCorrect && <p className="text-slate-500 ml-3 mt-0.5">{r.explanation}</p>}
+                </div>
+              ))}
+              {quizResult.aiFeedback && (
+                <p className="text-xs text-slate-700 bg-white rounded-lg p-2 border border-emerald-100">{quizResult.aiFeedback}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'meet' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Coffee size={14} className="text-brand-600" />
+            <h3 className="text-sm font-semibold text-slate-700">First meeting & coffee chat</h3>
+          </div>
+          <p className="text-[11px] text-slate-500">Send a warm invite with icebreakers and agenda — great for prospects or first virtual meet-ups.</p>
+          <div className="space-y-2">
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => sendInvite(t)}
+                className="w-full text-left rounded-xl border border-slate-100 hover:border-brand-200 hover:bg-brand-50/40 p-3 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{t.icon}</span>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-800">{t.label}</div>
+                    <div className="text-[10px] text-slate-400">{t.subject}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+          {inviteSent && selectedTemplate && (
+            <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3 text-[11px] text-brand-800">
+              Sent "{selectedTemplate.label}" to {customerName || 'client'}.
+              {selectedTemplate.suggestQuiz && ' Quiz was also shared.'}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}

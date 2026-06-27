@@ -1,0 +1,63 @@
+.dropzone {
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  background-color: #f8fafc;
+}
+
+.dropzoneActive {
+  border-color: #38bdf8;
+  background-color: rgba(56, 189, 248, 0.06);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.docRow {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  animation: rowIn 0.25s ease both;
+}
+
+.docRow:hover {
+  box-shadow: 0 8px 20px -14px rgba(2, 132, 199, 0.3);
+}
+
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.deleteBtn {
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.deleteBtn:hover {
+  transform: scale(1.08);
+}
+
+.entryCard {
+  transition: box-shadow 0.15s ease;
+}
+
+.entryCard:hover {
+  box-shadow: 0 8px 20px -14px rgba(2, 132, 199, 0.25);
+}
+
+.trustNote {
+  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 70%);
+  border-color: #a7f3d0;
+}

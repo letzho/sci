@@ -1,0 +1,43 @@
+.button {
+  position: relative;
+  transform: translateY(0);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.97);
+}
+
+.card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.cardHoverable:hover {
+  box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.18);
+  transform: translateY(-2px);
+}
+
+.badge {
+  position: relative;
+  transition: transform 0.15s ease;
+}
+
+.badgeAccent {
+  background-image: linear-gradient(120deg, rgba(56, 189, 248, 0.12), rgba(2, 132, 199, 0.08));
+}
+
+.select {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  background-image: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.spinner {
+  border-top-color: #0284c7;
+  filter: drop-shadow(0 0 6px rgba(2, 132, 199, 0.25));
+}

@@ -1,0 +1,76 @@
+.stage {
+  box-shadow: 0 20px 50px -24px rgba(2, 16, 36, 0.6);
+}
+
+.waitingOverlay {
+  backdrop-filter: blur(2px);
+}
+
+.captionBubble {
+  backdrop-filter: blur(4px);
+  animation: fadeUp 0.25s ease both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.statusPill {
+  backdrop-filter: blur(4px);
+}
+
+.statusDot {
+  position: relative;
+}
+
+.statusDotLive::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid #34d399;
+  animation: ripple 1.8s ease-out infinite;
+}
+
+@keyframes ripple {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.pip {
+  box-shadow: 0 8px 20px -8px rgba(2, 16, 36, 0.6);
+  transition: transform 0.2s ease;
+}
+
+.pip:hover {
+  transform: scale(1.04);
+}
+
+.controlBar {
+  transition: box-shadow 0.2s ease;
+}
+
+.guidanceCard {
+  position: relative;
+}
+
+.guidanceCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(90deg, #0284c7, #38bdf8, #0284c7);
+}
+
+.sparkle {
+  animation: twinkle 2.2s ease-in-out infinite;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
