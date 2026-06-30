@@ -20,7 +20,7 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
   const remoteDescSetRef = useRef(false);
   const displayNameRef = useRef(displayName);
   const negotiatingRef = useRef(false);
-  const forceRelayRef = useRef(isProductionWebRtc());
+  const forceRelayRef = useRef(false);
   const retriedRelayRef = useRef(false);
   const startNegotiationRef = useRef(null);
 
@@ -92,14 +92,14 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
     };
 
     pc.ontrack = (event) => {
-      // Add the incoming track to a persistent stream rather than replacing
-      // the stream reference. This prevents ontrack firing during renegotiation
-      // (e.g. when the remote side mutes a track) from nulling out the video.
       const ms = remoteStreamRef.current;
       if (!ms.getTracks().some((t) => t.id === event.track.id)) {
         ms.addTrack(event.track);
       }
-      setRemoteStream(ms);
+      // New object reference so React re-renders and <video> picks up tracks.
+      const playable = new MediaStream(ms.getTracks());
+      remoteStreamRef.current = playable;
+      setRemoteStream(playable);
     };
 
     pc.onconnectionstatechange = () => {
@@ -136,29 +136,37 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
   }, []);
 
   // Acquire local camera/mic once on mount.
-  useEffect(() => {
-    let active = true;
-    navigator.mediaDevices
-      ?.getUserMedia({ video: true, audio: true })
+  const startLocalMedia = useCallback(() => {
+    if (localStreamRef.current) return Promise.resolve(localStreamRef.current);
+    return navigator.mediaDevices
+      ?.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: { echoCancellation: true, noiseSuppression: true },
+      })
       .then((stream) => {
-        if (!active) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
         localStreamRef.current = stream;
         setLocalStream(stream);
+        setMediaError(null);
+        return stream;
       })
       .catch((err) => {
         console.warn('[useWebRTC] getUserMedia failed:', err.message);
-        setMediaError(err.message || 'Camera/microphone unavailable');
+        setMediaError(err.message || 'Camera/microphone unavailable — tap Enable camera below');
+        return null;
       });
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    startLocalMedia().then((stream) => {
+      if (!active && stream) stream.getTracks().forEach((t) => t.stop());
+    });
     return () => {
       active = false;
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [startLocalMedia]);
 
   // Join the signaling room + wire up socket listeners for this conversation.
   useEffect(() => {
@@ -173,7 +181,14 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
     if (socket.connected) emitJoinRoom();
     socket.on('connect', handleConnect);
 
-    const handleRoomStatus = (status) => setRoomStatus(status);
+    const handleRoomStatus = (status) => {
+      setRoomStatus((prev) => {
+        if (role === 'client' && status.agentPresent && !prev.agentPresent) {
+          socket.emit('request-call', { conversationId });
+        }
+        return status;
+      });
+    };
 
     const handleIceCandidate = async ({ candidate }) => {
       if (candidate === null) return;
@@ -224,6 +239,7 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
     const handleOffer = async ({ sdp }) => {
       if (role !== 'client') return;
+      console.log('[useWebRTC] received offer, role=client');
       const existing = pcRef.current;
       if (existing?.connectionState === 'connected') return;
       if (negotiatingRef.current) return;
@@ -304,13 +320,14 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
   const reconnectVideo = useCallback(() => {
     retriedRelayRef.current = false;
-    forceRelayRef.current = isProductionWebRtc();
+    forceRelayRef.current = false;
     resetPeerConnection();
     setConnectionState('connecting');
     socket?.emit('join-room', { conversationId, role, displayName: displayNameRef.current });
-    if (role === 'agent') {
-      setTimeout(() => startNegotiationRef.current?.(), 400);
-    }
+    setTimeout(() => {
+      if (role === 'agent') startNegotiationRef.current?.();
+      else socket?.emit('request-call', { conversationId });
+    }, 400);
   }, [conversationId, resetPeerConnection, role, socket]);
 
   const endCall = useCallback(() => {
@@ -327,5 +344,6 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
     toggleTrack,
     endCall,
     reconnectVideo,
+    startLocalMedia,
   };
 }

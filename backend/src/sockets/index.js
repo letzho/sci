@@ -142,6 +142,15 @@ function initSockets(io) {
       socket.to(conversationId).emit('webrtc-ice-candidate', { candidate });
     });
 
+    /** Client joined late or needs a fresh WebRTC offer from the agent. */
+    socket.on('request-call', ({ conversationId } = {}) => {
+      if (!conversationId) return;
+      const room = getRoom(conversationId);
+      if (room.agentSocketId) {
+        io.to(room.agentSocketId).emit('initiate-call', { conversationId });
+      }
+    });
+
     // ---- Live guidance during a virtual call, driven by the customer's speech ----
     socket.on('customer-speech', async ({ conversationId, text, productType } = {}) => {
       if (!conversationId || !text || !text.trim()) return;

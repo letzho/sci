@@ -12,6 +12,7 @@ import ClientCalculatorOverlay from '../../components/ClientCalculatorOverlay.js
 import Logo from '../../components/Logo.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import { Button, Card, LoadingSpinner } from '../../components/ui.jsx';
+import { attachVideoStream } from '../../utils/videoStream.js';
 import styles from './ClientCall.module.css';
 
 const STATUS_LABEL = {
@@ -68,18 +69,18 @@ export default function ClientCall() {
     load();
   }, [conversationId]);
 
-  const { localStream, remoteStream, connectionState, mediaError, roomStatus, iceDebug, toggleTrack, endCall, reconnectVideo } = useWebRTC({
+  const { localStream, remoteStream, connectionState, mediaError, roomStatus, iceDebug, toggleTrack, endCall, reconnectVideo, startLocalMedia } = useWebRTC({
     socket,
     conversationId,
     role: 'client',
   });
 
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+    attachVideoStream(localVideoRef.current, localStream);
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream || null;
+    attachVideoStream(remoteVideoRef.current, remoteStream);
   }, [remoteStream]);
 
   useEffect(() => {
@@ -230,9 +231,27 @@ export default function ClientCall() {
 
       {mediaError && (
         <div className="px-5 pb-2">
-          <Card className="p-3 border-rose-200 bg-rose-50 max-w-3xl mx-auto">
-            <p className="text-xs text-rose-700">Camera/microphone access issue: {mediaError}</p>
+          <Card className="p-3 border-rose-200 bg-rose-50 max-w-3xl mx-auto space-y-2">
+            <p className="text-xs text-rose-700">{mediaError}</p>
+            <button type="button" onClick={() => startLocalMedia()} className="text-xs font-semibold text-rose-800 underline">
+              Enable camera &amp; microphone
+            </button>
           </Card>
+        </div>
+      )}
+
+      {!localStream && !mediaError && (
+        <div className="px-5 pb-2 text-center">
+          <button type="button" onClick={() => startLocalMedia()} className="text-xs text-white/80 underline">
+            Tap to enable your camera
+          </button>
+        </div>
+      )}
+
+      {connectionState !== 'connected' && roomStatus.agentPresent && (
+        <div className="px-5 pb-2 text-center text-[11px] text-white/50">
+          {connectionState === 'connecting' ? 'Connecting video…' : 'Waiting for video link…'}
+          {iceDebug ? ` (${iceDebug})` : ''}
         </div>
       )}
 

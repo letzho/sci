@@ -10,6 +10,7 @@ import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import AgentToolsPanel from '../../components/AgentToolsPanel.jsx';
 import ObjectionBusterPanel from '../../components/ObjectionBusterPanel.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
+import { attachVideoStream } from '../../utils/videoStream.js';
 import styles from './VirtualCall.module.css';
 
 const STATUS_LABEL = {
@@ -65,7 +66,7 @@ export default function VirtualCall() {
     load();
   }, [conversationId]);
 
-  const { localStream, remoteStream, connectionState, mediaError, roomStatus, iceDebug, toggleTrack, endCall, reconnectVideo } = useWebRTC({
+  const { localStream, remoteStream, connectionState, mediaError, roomStatus, iceDebug, toggleTrack, endCall, reconnectVideo, startLocalMedia } = useWebRTC({
     socket,
     conversationId,
     role: 'agent',
@@ -73,11 +74,11 @@ export default function VirtualCall() {
   });
 
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+    attachVideoStream(localVideoRef.current, localStream);
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream || null;
+    attachVideoStream(remoteVideoRef.current, remoteStream);
   }, [remoteStream]);
 
   // Guidance driven by the customer's speech (server relays this to the agent only).
@@ -236,8 +237,11 @@ export default function VirtualCall() {
         </div>
 
         {mediaError && (
-          <Card className="p-3 border-rose-200 bg-rose-50">
-            <p className="text-xs text-rose-700">Camera/microphone access issue: {mediaError}</p>
+          <Card className="p-3 border-rose-200 bg-rose-50 space-y-2">
+            <p className="text-xs text-rose-700">Camera/microphone: {mediaError}</p>
+            <Button size="sm" variant="outline" onClick={() => startLocalMedia()}>
+              Enable camera
+            </Button>
           </Card>
         )}
 
