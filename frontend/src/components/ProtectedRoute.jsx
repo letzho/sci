@@ -14,7 +14,19 @@ export default function ProtectedRoute({ children }) {
   }
 
   if (!agent) {
-    return <Navigate to="/agent/login" replace />;
+    const sessionExpired = sessionStorage.getItem('sci_session_expired') === '1';
+    if (sessionExpired) sessionStorage.removeItem('sci_session_expired');
+    return (
+      <Navigate
+        to="/agent/login"
+        replace
+        state={
+          sessionExpired
+            ? { message: 'Your session expired (often after a database re-seed). Please sign in again.' }
+            : undefined
+        }
+      />
+    );
   }
 
   return children;
