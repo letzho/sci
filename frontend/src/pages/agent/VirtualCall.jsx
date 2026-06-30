@@ -65,7 +65,7 @@ export default function VirtualCall() {
     load();
   }, [conversationId]);
 
-  const { localStream, remoteStream, connectionState, mediaError, roomStatus, toggleTrack, endCall } = useWebRTC({
+  const { localStream, remoteStream, connectionState, mediaError, roomStatus, iceDebug, toggleTrack, endCall, reconnectVideo } = useWebRTC({
     socket,
     conversationId,
     role: 'agent',
@@ -238,6 +238,18 @@ export default function VirtualCall() {
         {mediaError && (
           <Card className="p-3 border-rose-200 bg-rose-50">
             <p className="text-xs text-rose-700">Camera/microphone access issue: {mediaError}</p>
+          </Card>
+        )}
+
+        {(connectionState === 'failed' || connectionState === 'disconnected') && roomStatus.clientPresent && (
+          <Card className="p-3 border-amber-200 bg-amber-50 space-y-2">
+            <p className="text-xs text-amber-800">
+              Video could not connect across networks. Tap retry — we will route through a relay server (TURN).
+            </p>
+            {iceDebug && <p className="text-[10px] text-amber-700">{iceDebug}</p>}
+            <Button size="sm" variant="outline" onClick={reconnectVideo}>
+              Retry video connection
+            </Button>
           </Card>
         )}
 

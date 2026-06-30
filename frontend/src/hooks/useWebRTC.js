@@ -1,60 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-/** STUN helps peers find each other; TURN relays media when NAT blocks direct connection (different WiFi/networks). */
-const STUN_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
-
-/** Public demo TURN — enables video across different networks (not just same WiFi). */
-const DEMO_TURN_SERVERS = [
-  {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turn:openrelay.metered.ca:443?transport=tcp',
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayprojectsecret',
-  },
-];
-
-function resolveIceServers() {
-  const raw = import.meta.env.VITE_ICE_SERVERS;
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    } catch {
-      console.warn('[useWebRTC] Invalid VITE_ICE_SERVERS JSON — using defaults');
-    }
-  }
-  const isLocal =
-    typeof window === 'undefined' ||
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    /^192\.168\./.test(window.location.hostname) ||
-    /^10\./.test(window.location.hostname) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(window.location.hostname);
-  if (isLocal) return STUN_SERVERS;
-  return [...STUN_SERVERS, ...DEMO_TURN_SERVERS];
-}
-
-const ICE_SERVERS = resolveIceServers();
+import { getPeerConnectionConfig, isProductionWebRtc } from '../utils/webrtcIce.js';
 
 /**
- * Minimal two-peer WebRTC helper for a real, live video call between the
- * Agent Console and the Client Portal. Signaling (offer/answer/ICE) is
- * relayed through the existing Socket.io connection - no separate
- * signaling server needed. Works great between two browser tabs/windows on
- * the same machine or LAN, which is exactly the live-demo scenario.
+ * Two-peer WebRTC for Agent ↔ Customer video. Signaling uses Socket.io on Render;
+ * media is peer-to-peer with TURN fallback on production (different networks).
  */
 export function useWebRTC({ socket, conversationId, role, displayName }) {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [connectionState, setConnectionState] = useState('idle'); // idle | connecting | connected | failed | ended
+  const [connectionState, setConnectionState] = useState('idle');
   const [mediaError, setMediaError] = useState(null);
   const [roomStatus, setRoomStatus] = useState({ agentPresent: false, clientPresent: false });
+  const [iceDebug, setIceDebug] = useState('');
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -63,6 +20,9 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
   const remoteDescSetRef = useRef(false);
   const displayNameRef = useRef(displayName);
   const negotiatingRef = useRef(false);
+  const forceRelayRef = useRef(isProductionWebRtc());
+  const retriedRelayRef = useRef(false);
+  const startNegotiationRef = useRef(null);
 
   useEffect(() => {
     displayNameRef.current = displayName;
@@ -104,11 +64,30 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
   const ensurePeerConnection = useCallback(() => {
     if (pcRef.current) return pcRef.current;
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection(getPeerConnectionConfig({ forceRelay: forceRelayRef.current }));
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('webrtc-ice-candidate', { conversationId, candidate: event.candidate });
+      } else {
+        socket.emit('webrtc-ice-candidate', { conversationId, candidate: null });
+      }
+    };
+
+    pc.onicegatheringstatechange = () => {
+      setIceDebug(`ICE gathering: ${pc.iceGatheringState}${forceRelayRef.current ? ' (TURN relay)' : ''}`);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      setIceDebug(`ICE: ${state}${forceRelayRef.current ? ' · relay mode' : ''}`);
+      if (state === 'failed' && isProductionWebRtc() && !retriedRelayRef.current) {
+        retriedRelayRef.current = true;
+        forceRelayRef.current = true;
+        console.warn('[useWebRTC] ICE failed — retrying with TURN relay only');
+        resetPeerConnection();
+        setConnectionState('connecting');
+        startNegotiationRef.current?.();
       }
     };
 
@@ -129,7 +108,7 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
     pcRef.current = pc;
     return pc;
-  }, [socket, conversationId]);
+  }, [conversationId, resetPeerConnection, socket]);
 
   const addLocalTracks = useCallback(
     async (pc) => {
@@ -196,7 +175,22 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
     const handleRoomStatus = (status) => setRoomStatus(status);
 
-    const handleInitiateCall = async () => {
+    const handleIceCandidate = async ({ candidate }) => {
+      if (candidate === null) return;
+      if (!candidate) return;
+      const pc = pcRef.current;
+      if (pc && remoteDescSetRef.current) {
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch (err) {
+          console.warn('[useWebRTC] failed to add ICE candidate', err);
+        }
+      } else {
+        pendingCandidatesRef.current.push(candidate);
+      }
+    };
+
+    const runAgentOffer = async () => {
       if (role !== 'agent') return;
       const existing = pcRef.current;
       if (existing?.connectionState === 'connected') return;
@@ -211,7 +205,7 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
       const pc = ensurePeerConnection();
       await addLocalTracks(pc);
       try {
-        const offer = await pc.createOffer();
+        const offer = await pc.createOffer({ iceRestart: retriedRelayRef.current });
         await pc.setLocalDescription(offer);
         socket.emit('webrtc-offer', { conversationId, sdp: pc.localDescription });
       } catch (err) {
@@ -220,6 +214,12 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
       } finally {
         negotiatingRef.current = false;
       }
+    };
+
+    startNegotiationRef.current = runAgentOffer;
+
+    const handleInitiateCall = async () => {
+      await runAgentOffer();
     };
 
     const handleOffer = async ({ sdp }) => {
@@ -264,20 +264,6 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
       }
     };
 
-    const handleIceCandidate = async ({ candidate }) => {
-      if (!candidate) return;
-      const pc = pcRef.current;
-      if (pc && remoteDescSetRef.current) {
-        try {
-          await pc.addIceCandidate(candidate);
-        } catch (err) {
-          console.warn('[useWebRTC] failed to add ICE candidate', err);
-        }
-      } else {
-        pendingCandidatesRef.current.push(candidate);
-      }
-    };
-
     const handlePeerDisconnected = () => {
       setConnectionState('idle');
       setRemoteStream(null);
@@ -316,9 +302,30 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
     });
   }, []);
 
+  const reconnectVideo = useCallback(() => {
+    retriedRelayRef.current = false;
+    forceRelayRef.current = isProductionWebRtc();
+    resetPeerConnection();
+    setConnectionState('connecting');
+    socket?.emit('join-room', { conversationId, role, displayName: displayNameRef.current });
+    if (role === 'agent') {
+      setTimeout(() => startNegotiationRef.current?.(), 400);
+    }
+  }, [conversationId, resetPeerConnection, role, socket]);
+
   const endCall = useCallback(() => {
     socket?.emit('end-call', { conversationId });
   }, [socket, conversationId]);
 
-  return { localStream, remoteStream, connectionState, mediaError, roomStatus, toggleTrack, endCall };
+  return {
+    localStream,
+    remoteStream,
+    connectionState,
+    mediaError,
+    roomStatus,
+    iceDebug,
+    toggleTrack,
+    endCall,
+    reconnectVideo,
+  };
 }

@@ -68,7 +68,7 @@ export default function ClientCall() {
     load();
   }, [conversationId]);
 
-  const { localStream, remoteStream, connectionState, mediaError, roomStatus, toggleTrack, endCall } = useWebRTC({
+  const { localStream, remoteStream, connectionState, mediaError, roomStatus, iceDebug, toggleTrack, endCall, reconnectVideo } = useWebRTC({
     socket,
     conversationId,
     role: 'client',
@@ -232,6 +232,22 @@ export default function ClientCall() {
         <div className="px-5 pb-2">
           <Card className="p-3 border-rose-200 bg-rose-50 max-w-3xl mx-auto">
             <p className="text-xs text-rose-700">Camera/microphone access issue: {mediaError}</p>
+          </Card>
+        </div>
+      )}
+
+      {(connectionState === 'failed' || connectionState === 'disconnected') && roomStatus.agentPresent && (
+        <div className="px-5 pb-2">
+          <Card className="p-3 border-amber-200 bg-amber-50 max-w-3xl mx-auto space-y-2">
+            <p className="text-xs text-amber-800">Video link failed — tap retry to connect through a relay.</p>
+            {iceDebug && <p className="text-[10px] text-amber-700">{iceDebug}</p>}
+            <button
+              type="button"
+              onClick={reconnectVideo}
+              className="text-xs font-semibold text-amber-900 underline"
+            >
+              Retry video connection
+            </button>
           </Card>
         </div>
       )}
