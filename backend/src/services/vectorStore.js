@@ -56,31 +56,35 @@ async function embedAndStoreChunk(chunkId, text) {
  *   signal callers use to fall back to keyword matching instead of treating
  *   "no embeddings yet" the same as "no semantic match found".
  */
-async function semanticSearch({ text, productType, limit = 2, minSimilarity = 0.74 }) {
+async function semanticSearch({ text, productType, limit = 4, minSimilarity = 0.65, comparisonMode = false }) {
   if (!openaiService.isEnabled() || !text || !text.trim()) return null;
 
   const queryVector = await openaiService.embedText(text);
   if (!queryVector) return null;
 
-  const rows = await (productType
+  const { chunkLooksLikeComparisonTable } = require('./comparisonQuery');
+
+  const rows = await (comparisonMode || !productType
     ? db
         .prepare(
-          `SELECT lc.*, ld.filename, ld.title
-           FROM learned_chunks lc
-           JOIN learned_documents ld ON ld.id = lc.document_id
-           WHERE ld.status = 'active' AND lc.embedding IS NOT NULL AND (lc.product_type IS NULL OR lc.product_type = ?)`
-        )
-        .all(productType)
-    : db
-        .prepare(
-          `SELECT lc.*, ld.filename, ld.title
+          `SELECT lc.*, ld.filename, ld.title, ld.source_type, ld.source_url
            FROM learned_chunks lc
            JOIN learned_documents ld ON ld.id = lc.document_id
            WHERE ld.status = 'active' AND lc.embedding IS NOT NULL`
         )
-        .all());
+        .all()
+    : db
+        .prepare(
+          `SELECT lc.*, ld.filename, ld.title, ld.source_type, ld.source_url
+           FROM learned_chunks lc
+           JOIN learned_documents ld ON ld.id = lc.document_id
+           WHERE ld.status = 'active' AND lc.embedding IS NOT NULL AND (lc.product_type IS NULL OR lc.product_type = ?)`
+        )
+        .all(productType));
 
   if (rows.length === 0) return [];
+
+  const effectiveMin = comparisonMode ? Math.min(minSimilarity, 0.58) : minSimilarity;
 
   const scored = [];
   for (const row of rows) {
@@ -90,18 +94,23 @@ async function semanticSearch({ text, productType, limit = 2, minSimilarity = 0.
     } catch {
       continue;
     }
-    const similarity = cosineSimilarity(queryVector, vector);
-    if (similarity >= minSimilarity) {
+    let similarity = cosineSimilarity(queryVector, vector);
+    if (row.source_type === 'url') similarity += 0.04;
+    if (chunkLooksLikeComparisonTable(row.content)) similarity += 0.05;
+
+    if (similarity >= effectiveMin) {
       scored.push({
         id: row.id,
         productType: row.product_type,
         topic: row.topic,
         approvedMessage: row.content,
-        plainEnglish: row.content.length > 260 ? `${row.content.slice(0, 257)}...` : row.content,
+        plainEnglish: row.content.length > 420 ? `${row.content.slice(0, 417)}...` : row.content,
         matchedKeywords: [],
         score: Number(similarity.toFixed(3)),
         source: 'learned',
         sourceDocument: row.title || row.filename,
+        sourceType: row.source_type || 'pdf',
+        sourceUrl: row.source_url || null,
       });
     }
   }

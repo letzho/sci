@@ -5,6 +5,7 @@ const { genId } = require('../utils/idGen');
 const documentService = require('../services/documentService');
 const interpreterAgent = require('../agents/interpreterAgent');
 const { inferDocumentProductType } = require('../services/policyContext');
+const policyDocumentIndex = require('../services/policyDocumentIndex');
 const adminAgent = require('../agents/adminAgent');
 
 const router = express.Router();
@@ -73,20 +74,34 @@ router.post('/', (req, res) => {
     );
 
     try {
-      const { text, pageCount } = await documentService.extractText(req.file.buffer);
+      const { text, rawText, pageCount, extractionQuality } = await documentService.extractText(req.file.buffer);
 
       if (!text || !text.trim()) {
         await db.prepare(`UPDATE policy_uploads SET status = 'failed', error = ?, page_count = ? WHERE id = ?`).run(
-          'No extractable text found - the PDF may be scanned/image-only.',
+          extractionQuality?.warning ||
+            'No extractable text found - the PDF may be scanned/image-only or use fonts that cannot be read as text.',
           pageCount,
           uploadId
         );
       } else {
         const docProductType = inferDocumentProductType(req.file.originalname, null) || convo.product_context;
-        const analysis = await interpreterAgent.analyzePolicyText({ text, productType: docProductType });
+        const analysis = await interpreterAgent.analyzePolicyText({
+          text,
+          productType: docProductType,
+          extractionQuality,
+        });
         await db.prepare(
-          `UPDATE policy_uploads SET status = 'analyzed', page_count = ?, extracted_text = ?, analysis_json = ? WHERE id = ?`
-        ).run(pageCount, text, JSON.stringify(analysis), uploadId);
+          `UPDATE policy_uploads SET status = 'analyzed', page_count = ?, extracted_text = ?, raw_extracted_text = ?, analysis_json = ? WHERE id = ?`
+        ).run(pageCount, text, rawText || null, JSON.stringify(analysis), uploadId);
+
+        const indexed = await policyDocumentIndex.indexAndStore(uploadId, text);
+        if (indexed > 0) {
+          analysis.documentChunkCount = indexed;
+          await db.prepare(`UPDATE policy_uploads SET analysis_json = ? WHERE id = ?`).run(
+            JSON.stringify(analysis),
+            uploadId
+          );
+        }
       }
     } catch (procErr) {
       console.error('[policyUploads.routes] processing failed:', procErr);

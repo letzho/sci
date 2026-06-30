@@ -13,8 +13,8 @@ function formatCurrency(n) {
   return `S$${Number(n).toLocaleString()}`;
 }
 
-export default function FinancialCalculator({ onShare, compact = false }) {
-  const [mode, setMode] = useState('investment');
+export default function FinancialCalculator({ onShare, compact = false, defaultMode = 'investment' }) {
+  const [mode, setMode] = useState(defaultMode);
   const [monthlyContribution, setMonthlyContribution] = useState(500);
   const [annualReturn, setAnnualReturn] = useState(5);
   const [years, setYears] = useState(15);

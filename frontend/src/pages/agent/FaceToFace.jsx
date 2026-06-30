@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Mic, MicOff, PhoneOff, User, Volume2 } from 'lucide-react';
 import api from '../../api/client';
 import GuidancePanel from '../../components/GuidancePanel.jsx';
-import { useSpeechRecognition } from '../../hooks/useSpeechRecognition.js';
+import { useWhisperRecognition } from '../../hooks/useWhisperRecognition.js';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import { Badge, Button, Card, LoadingSpinner, ProductSelect, productLabel } from '../../components/ui.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
@@ -58,7 +58,7 @@ export default function FaceToFace() {
     }
   }
 
-  const { isSupported, isListening, interimText, start, stop } = useSpeechRecognition({
+  const { isSupported, isListening, interimText, ready, start, stop } = useWhisperRecognition({
     onFinalResult: handleFinalResult,
   });
 
@@ -127,7 +127,7 @@ export default function FaceToFace() {
             </p>
           ) : (
             <div className="flex items-center gap-3">
-              <Button variant={isListening ? 'danger' : 'primary'} onClick={isListening ? stop : start} className={styles.listenBtn}>
+              <Button variant={isListening ? 'danger' : 'primary'} onClick={isListening ? stop : start} disabled={!ready} className={styles.listenBtn}>
                 {isListening ? <MicOff size={16} /> : <Mic size={16} />}
                 {isListening ? 'Stop listening' : 'Start listening'}
               </Button>

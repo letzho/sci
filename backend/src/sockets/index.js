@@ -2,7 +2,9 @@ const db = require('../db/connection');
 const orchestrator = require('../agents/orchestrator');
 const adminAgent = require('../agents/adminAgent');
 const quizAgent = require('../agents/quizAgent');
+const needsSurveyAgent = require('../agents/needsSurveyAgent');
 const { getQuiz } = require('../data/quizQuestions');
+const { getNeedsSurvey } = require('../data/needsSurveyQuestions');
 
 /**
  * Real-time layer for the Virtual Call and Chat channels.
@@ -269,6 +271,46 @@ function initSockets(io) {
     socket.on('share-calculator', ({ conversationId, result } = {}) => {
       if (!conversationId || !result) return;
       emitToClients(conversationId, 'calculator-shared', { result });
+    });
+
+    socket.on('game-survey-start', async ({ conversationId, productType } = {}) => {
+      if (!conversationId) return;
+      const survey = getNeedsSurvey(productType);
+      emitToClients(conversationId, 'game-survey-start', { survey, productType });
+      await adminAgent.logMessage({
+        conversationId,
+        sender: 'agent',
+        kind: 'game_survey',
+        content: JSON.stringify({ action: 'started', title: survey.title }),
+      });
+    });
+
+    socket.on('game-survey-submit', async ({ conversationId, productType, answers, gameChoice, customerName } = {}) => {
+      if (!conversationId || !answers) return;
+      try {
+        const result = await needsSurveyAgent.summarizeNeedsSurvey({
+          productType,
+          answers,
+          gameChoice,
+          customerName,
+        });
+        emitToAgents(conversationId, 'game-survey-result', { result });
+        emitToClients(conversationId, 'game-survey-complete', {
+          result: { surveyTitle: result.surveyTitle, repBrief: result.repBrief },
+        });
+        await adminAgent.logMessage({
+          conversationId,
+          sender: 'customer',
+          kind: 'game_survey',
+          content: JSON.stringify({
+            action: 'completed',
+            gameChoice,
+            insights: result.insights,
+          }),
+        });
+      } catch (err) {
+        console.error('[sockets] game-survey-submit error:', err.message);
+      }
     });
 
     socket.on('end-call', async ({ conversationId } = {}) => {

@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
-set -e
-
-# Render start script: Flask ML sidecar (internal) + Express API (public PORT)
+# Render: start Express API. ML sidecar is optional — never block Node if Python missing.
 cd "$(dirname "$0")"
 
-if [ -f ml/requirements.txt ]; then
-  pip install -r ml/requirements.txt --quiet
-  ML_HOST=127.0.0.1 ML_PORT=5001 python ml/app.py &
-fi
+start_ml() {
+  if [ ! -f ml/requirements.txt ]; then return 0; fi
+  if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+    echo "[start] Python not found — premium ML disabled; API will still run."
+    return 0
+  fi
+  PY=python3
+  command -v python3 >/dev/null 2>&1 || PY=python
+  PIP=pip3
+  command -v pip3 >/dev/null 2>&1 || PIP=pip
+  $PIP install -r ml/requirements.txt --quiet 2>/dev/null || echo "[start] pip install failed — ML disabled"
+  ML_HOST=127.0.0.1 ML_PORT=5001 $PY ml/app.py &
+  echo "[start] ML sidecar starting on 127.0.0.1:5001"
+}
 
-node server.js
+start_ml
+exec node server.js

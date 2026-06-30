@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, MessageSquare, RefreshCcw, ShieldCheck, Video } from 'lucide-react';
+import { ChevronRight, MessageSquare, PieChart, RefreshCcw, ShieldCheck, Video } from 'lucide-react';
 import api from '../../api/client';
 import PhoneFrame from '../../components/PhoneFrame.jsx';
 import Logo from '../../components/Logo.jsx';
@@ -135,10 +135,17 @@ export default function ClientHome() {
 
         <div className="flex items-center gap-3 mb-5">
           <PersonAvatar name={customer.name} emoji={customer.avatarEmoji} className="h-12 w-12 bg-brand-50 text-xl" />
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="font-bold text-slate-800">{customer.name}</div>
             <div className="text-xs text-slate-400">Welcome back</div>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate('/client/profile')}
+            className="flex items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-[11px] font-medium text-brand-700"
+          >
+            <PieChart size={13} /> Profile
+          </button>
         </div>
 
         <Card className={`p-4 mb-5 brand-gradient text-white border-none ${styles.repCard}`}>

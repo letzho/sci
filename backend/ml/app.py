@@ -43,7 +43,7 @@ def load_models():
 load_models()
 
 
-@app.route("/health", methods=["GET"])
+@app.route("/health", methods=["GET", "HEAD"])
 def health():
     ready = model is not None and column_transformer is not None
     payload = {"ok": ready, "service": "premium-ml"}

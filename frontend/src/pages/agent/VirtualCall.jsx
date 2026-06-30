@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { getSocket } from '../../socket.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useWebRTC } from '../../hooks/useWebRTC.js';
-import { useSpeechRecognition } from '../../hooks/useSpeechRecognition.js';
+import { useWhisperRecognition } from '../../hooks/useWhisperRecognition.js';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import AgentToolsPanel from '../../components/AgentToolsPanel.jsx';
 import ObjectionBusterPanel from '../../components/ObjectionBusterPanel.jsx';
@@ -137,16 +137,17 @@ export default function VirtualCall() {
     }
   }
 
-  const { isListening, isSupported, start: startListening, stop: stopListening } = useSpeechRecognition({
+  const { isListening, isSupported, start: startListening, stop: stopListening, ready } = useWhisperRecognition({
     onFinalResult: handleAgentFinal,
+    mediaStream: localStream,
   });
 
   // Start speech recognition after WebRTC has the mic, so it doesn't race getUserMedia.
   useEffect(() => {
-    if (!localStream || !conversation) return undefined;
+    if (!localStream || !conversation || !ready) return undefined;
     startListening();
     return () => stopListening();
-  }, [localStream, conversation, startListening, stopListening]);
+  }, [localStream, conversation, ready, startListening, stopListening]);
 
   function toggleMic() {
     const next = !micOn;
@@ -275,6 +276,7 @@ export default function VirtualCall() {
           conversationId={conversationId}
           productType={conversation?.productContext}
           customerName={customer?.name}
+          customerId={customer?.id || conversation?.customerId}
           agentName={agent?.name}
           socket={socket}
           history={history}

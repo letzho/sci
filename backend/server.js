@@ -10,6 +10,7 @@ const { initSockets } = require('./src/sockets');
 const authRoutes = require('./src/routes/auth.routes');
 const agentsRoutes = require('./src/routes/agents.routes');
 const customersRoutes = require('./src/routes/customers.routes');
+const financialPlansRoutes = require('./src/routes/financialPlans.routes');
 const policiesRoutes = require('./src/routes/policies.routes');
 const conversationsRoutes = require('./src/routes/conversations.routes');
 const messagesRoutes = require('./src/routes/messages.routes');
@@ -66,6 +67,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/customers', financialPlansRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/policies', policiesRoutes);
 app.use('/api/conversations', conversationsRoutes);

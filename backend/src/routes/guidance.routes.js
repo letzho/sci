@@ -1,14 +1,25 @@
 const express = require('express');
+const multer = require('multer');
 const db = require('../db/connection');
 const orchestrator = require('../agents/orchestrator');
 const adminAgent = require('../agents/adminAgent');
+const openaiService = require('../services/openaiService');
 
 const router = express.Router();
 
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
+router.get('/transcribe/status', (req, res) => {
+  res.json({ whisper: openaiService.isEnabled() });
+});
+
 /**
  * Live guidance endpoint used by the Face-to-Face channel (single browser
- * tab, agent's own mic via Web Speech API). Each finalised transcript chunk
- * is POSTed here and answered synchronously with talking points + any
+ * tab, agent's mic via OpenAI Whisper (or browser STT fallback). Each
+ * transcribed utterance is POSTed here and answered synchronously with talking points + any
  * compliance flags - no socket needed for this channel.
  */
 router.post('/live', async (req, res) => {
@@ -55,6 +66,28 @@ router.post('/chat-draft', async (req, res) => {
     console.error('[guidance.routes] /chat-draft error:', err);
     res.status(500).json({ error: 'Failed to generate draft reply' });
   }
+});
+
+/**
+ * OpenAI Whisper transcription for virtual call / face-to-face channels.
+ */
+router.post('/transcribe', (req, res) => {
+  audioUpload.single('audio')(req, res, async (uploadErr) => {
+    if (uploadErr) return res.status(400).json({ error: uploadErr.message || 'Upload failed' });
+    if (!req.file?.buffer?.length) return res.status(400).json({ error: 'No audio provided' });
+    if (!openaiService.isEnabled()) {
+      return res.status(503).json({ error: 'Whisper transcription requires OPENAI_API_KEY' });
+    }
+
+    try {
+      const text = await openaiService.transcribeAudio(req.file.buffer, req.file.originalname || 'audio.webm');
+      if (!text) return res.status(422).json({ error: 'Could not transcribe audio' });
+      res.json({ text });
+    } catch (transcribeErr) {
+      console.error('[guidance.routes] /transcribe error:', transcribeErr);
+      res.status(500).json({ error: 'Transcription failed' });
+    }
+  });
 });
 
 module.exports = router;

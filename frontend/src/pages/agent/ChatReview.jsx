@@ -7,6 +7,9 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import ComplianceGuardTextarea from '../../components/ComplianceGuardTextarea.jsx';
+import ActivityMessageBubble from '../../components/ActivityMessageBubble.jsx';
+import GameSurveyPanel from '../../components/gameSurvey/GameSurveyPanel.jsx';
+import { mapConversationMessages, parseActivityPayload } from '../../utils/chatMessageFormat.js';
 import styles from './ChatReview.module.css';
 
 // 'policy_document' messages carry a JSON-encoded payload in `content`
@@ -42,6 +45,8 @@ export default function ChatReview() {
   const [composeText, setComposeText] = useState('');
   const [loading, setLoading] = useState(true);
   const [policyAnalysis, setPolicyAnalysis] = useState(null);
+  const [socket, setSocket] = useState(null);
+  const [surveyResult, setSurveyResult] = useState(null);
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
 
@@ -50,10 +55,29 @@ export default function ChatReview() {
       const convoRes = await api.get(`/conversations/${conversationId}`);
       const convo = convoRes.data.conversation;
       setConversation(convo);
-      const loadedMessages = convoRes.data.messages
-        .filter((m) => m.kind !== 'draft' && m.kind !== 'transcript')
-        .map(parsePolicyMessage);
+      const loadedMessages = mapConversationMessages(
+        convoRes.data.messages.filter((m) => m.kind !== 'draft' && m.kind !== 'transcript')
+      ).map(parsePolicyMessage);
       setMessages(loadedMessages);
+      const lastSurvey = [...loadedMessages].reverse().find((m) => {
+        const p = parseActivityPayload(m);
+        return m.kind === 'game_survey' && p?.action === 'completed';
+      });
+      if (lastSurvey) {
+        const p = parseActivityPayload(lastSurvey);
+        setSurveyResult({
+          gameChoice: p.gameChoice,
+          repBrief: p.insights?.join('. '),
+          responses: (p.summary || '')
+            .split('|')
+            .map((part) => {
+              const [question, answer] = part.split('->').map((s) => s.trim());
+              return question ? { question, answer: answer || '' } : null;
+            })
+            .filter(Boolean),
+          insights: p.insights || [],
+        });
+      }
       const lastPolicy = loadedMessages
         .slice()
         .reverse()
@@ -67,9 +91,10 @@ export default function ChatReview() {
   }, [conversationId]);
 
   useEffect(() => {
-    const socket = getSocket();
-    socketRef.current = socket;
-    socket.emit('join-room', { conversationId, role: 'agent', displayName: agent?.name });
+    const sock = getSocket();
+    socketRef.current = sock;
+    setSocket(sock);
+    sock.emit('join-room', { conversationId, role: 'agent', displayName: agent?.name });
 
     const handleChatMessage = ({ sender, text, at }) => {
       setMessages((prev) => [...prev, { id: `${at}-${Math.random()}`, sender, kind: 'text', content: text, createdAt: at }]);
@@ -86,15 +111,38 @@ export default function ChatReview() {
       }
     };
 
-    socket.on('chat-message', handleChatMessage);
-    socket.on('chat-draft', handleChatDraft);
-    socket.on('policy-shared', handlePolicyShared);
+    const handleGameSurveyResult = ({ result }) => {
+      setSurveyResult(result);
+      const activityMsg = {
+        id: `survey-live-${Date.now()}`,
+        sender: 'customer',
+        kind: 'game_survey',
+        content: JSON.stringify({
+          action: 'completed',
+          gameChoice: result.gameChoice,
+          summary: result.summary,
+          insights: result.insights,
+        }),
+        createdAt: new Date().toISOString(),
+      };
+      const enriched = mapConversationMessages([activityMsg])[0];
+      setMessages((prev) => {
+        if (prev.some((m) => m.kind === 'game_survey' && m.activity?.title === 'Game survey completed')) return prev;
+        return [...prev, enriched];
+      });
+    };
+
+    sock.on('chat-message', handleChatMessage);
+    sock.on('chat-draft', handleChatDraft);
+    sock.on('policy-shared', handlePolicyShared);
+    sock.on('game-survey-result', handleGameSurveyResult);
 
     return () => {
-      socket.emit('leave-room', { conversationId });
-      socket.off('chat-message', handleChatMessage);
-      socket.off('chat-draft', handleChatDraft);
-      socket.off('policy-shared', handlePolicyShared);
+      sock.emit('leave-room', { conversationId });
+      sock.off('chat-message', handleChatMessage);
+      sock.off('chat-draft', handleChatDraft);
+      sock.off('policy-shared', handlePolicyShared);
+      sock.off('game-survey-result', handleGameSurveyResult);
     };
   }, [conversationId, agent]);
 
@@ -156,6 +204,8 @@ export default function ChatReview() {
                     </div>
                   </div>
                 </div>
+              ) : m.activity ? (
+                <ActivityMessageBubble activity={m.activity} sender={m.sender} />
               ) : (
                 <div
                   className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
@@ -222,9 +272,33 @@ export default function ChatReview() {
                 </span>
               )}
             </p>
+            {policyAnalysis.extractionQuality?.warning && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2 mb-3">
+                {policyAnalysis.extractionQuality.warning}
+              </p>
+            )}
+            {policyAnalysis.documentChunkCount != null && (
+              <p className="text-[11px] text-brand-600 mb-2">
+                {policyAnalysis.documentChunkCount} section{policyAnalysis.documentChunkCount === 1 ? '' : 's'} indexed from the full document
+              </p>
+            )}
             <p className="text-xs text-slate-600 mb-3">{policyAnalysis.summary}</p>
 
-            {policyAnalysis.coverageHighlights?.length > 0 && (
+            {policyAnalysis.documentSections?.length > 0 && (
+              <div className="mb-3">
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Document sections</div>
+                <ul className="space-y-1.5">
+                  {policyAnalysis.documentSections.map((s, i) => (
+                    <li key={i} className="text-xs text-slate-600">
+                      <span className="font-medium text-slate-700">{s.topic}</span>
+                      <p className="text-slate-500 mt-0.5">{s.preview}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {policyAnalysis.coverageHighlights?.length > 0 && !policyAnalysis.documentSections?.length && (
               <div className="mb-3">
                 <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Coverage highlights</div>
                 <ul className="space-y-1">
@@ -268,6 +342,17 @@ export default function ChatReview() {
             </p>
           </Card>
         )}
+
+        <Card className={`p-4 ${styles.sideNote}`}>
+          <GameSurveyPanel
+            conversationId={conversationId}
+            productType={conversation?.productContext}
+            customerName={customer?.name}
+            socket={socket}
+            initialResult={surveyResult}
+            compact
+          />
+        </Card>
 
         <Card className={`p-4 ${styles.sideNote}`}>
           <h2 className="text-sm font-semibold text-slate-700 mb-2">Why this matters</h2>

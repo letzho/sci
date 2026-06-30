@@ -182,6 +182,32 @@ async function initSchema() {
   // forever NULL if OPENAI_API_KEY isn't set - callers must treat it as
   // optional and fall back to the keyword-overlap matcher in ruleEngine.js.
   await ensureColumn('learned_chunks', 'embedding', 'TEXT');
+  await ensureColumn('policy_uploads', 'raw_extracted_text', 'TEXT');
+  await ensureColumn('customers', 'health_condition', 'TEXT');
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS financial_plans (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      agent_id TEXT REFERENCES agents(id),
+      plan_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (${db.NOW_EXPR}),
+      updated_at TEXT NOT NULL DEFAULT (${db.NOW_EXPR})
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_financial_plans_customer ON financial_plans(customer_id);
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS policy_upload_chunks (
+      id TEXT PRIMARY KEY,
+      upload_id TEXT NOT NULL REFERENCES policy_uploads(id) ON DELETE CASCADE,
+      chunk_index INTEGER NOT NULL,
+      topic TEXT,
+      content TEXT NOT NULL,
+      embedding TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_policy_chunks_upload ON policy_upload_chunks(upload_id);
+  `);
 }
 
 module.exports = { initSchema };

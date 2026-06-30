@@ -2,6 +2,7 @@ const db = require('../db/connection');
 const { genId } = require('../utils/idGen');
 const urlFetchService = require('./urlFetchService');
 const vectorStore = require('./vectorStore');
+const { cleanExtractedText, assessExtractionQuality, filterReadableChunks, buildMergedExtractionText } = require('./pdfTextQuality');
 
 /**
  * Document Service
@@ -91,7 +92,7 @@ function chunkText(rawText) {
   }
   flush();
 
-  return chunks.slice(0, MAX_CHUNKS_PER_DOC);
+  return filterReadableChunks(chunks).slice(0, MAX_CHUNKS_PER_DOC);
 }
 
 /**
@@ -101,7 +102,13 @@ function chunkText(rawText) {
 async function extractText(buffer) {
   const pdfParse = require('pdf-parse');
   const data = await pdfParse(buffer);
-  return { text: data.text || '', pageCount: data.numpages || 0 };
+  const raw = data.text || '';
+  const { text, cleaned, salvaged } = buildMergedExtractionText(raw);
+  const extractionQuality = assessExtractionQuality(raw, cleaned);
+  if (salvaged) {
+    extractionQuality.salvagedTableLines = true;
+  }
+  return { text, rawText: raw, pageCount: data.numpages || 0, extractionQuality };
 }
 
 function mapDocument(row) {

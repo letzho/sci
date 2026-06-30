@@ -50,7 +50,14 @@ function formatTalkingPointsForPrompt(talkingPoints) {
   if (!talkingPoints || talkingPoints.length === 0) return '(none matched)';
   return talkingPoints
     .map((t) => {
-      const label = t.source === 'learned' ? `from uploaded document "${t.sourceDocument || 'reference'}"` : 'approved';
+      let label = 'approved';
+      if (t.source === 'learned') {
+        if (t.sourceType === 'url') {
+          label = `from URL "${t.sourceDocument || 'reference'}"${t.sourceUrl ? ` (${t.sourceUrl})` : ''}`;
+        } else {
+          label = `from uploaded document "${t.sourceDocument || 'reference'}"`;
+        }
+      }
       return `- [${label}] (${t.topic}) ${t.approvedMessage}`;
     })
     .join('\n');
@@ -65,6 +72,20 @@ function formatWebResultsForPrompt(webResults) {
   return webResults.map((r) => `- [from the web: ${r.url}] ${r.title ? `${r.title} - ` : ''}${r.snippet}`).join('\n');
 }
 
+function formatRecentHistoryForPrompt(recentHistory, currentMessage) {
+  if (!recentHistory || recentHistory.length === 0) return '(no prior turns in this chat)';
+  const prior = recentHistory.filter(
+    (m) => !(m.sender === 'customer' && m.content.trim() === (currentMessage || '').trim())
+  );
+  if (prior.length === 0) return '(no prior turns in this chat)';
+  return prior
+    .map((m) => {
+      const role = m.sender === 'customer' ? 'Customer' : m.sender === 'agent' ? 'Representative' : m.sender;
+      return `${role}: "${m.content}"`;
+    })
+    .join('\n');
+}
+
 function formatPolicyContextForPrompt(policyContext) {
   if (!policyContext) return '(none — customer has not shared a policy document in this chat)';
   const lines = [
@@ -75,6 +96,13 @@ function formatPolicyContextForPrompt(policyContext) {
       `Customer's enrolled plan tier (from document): ${policyContext.insuredPlanTier.charAt(0).toUpperCase()}${policyContext.insuredPlanTier.slice(1)} — quote ONLY benefits for this tier, not other columns in the benefit table.`
     );
   }
+  if (policyContext.benefitTable?.accidental_death) {
+    lines.push('Table of cover — accidental death amounts extracted from document:');
+    const death = policyContext.benefitTable.accidental_death;
+    for (const [tier, amount] of Object.entries(death)) {
+      if (amount) lines.push(`  - ${tier}: S$${Number(amount).toLocaleString('en-SG')}`);
+    }
+  }
   lines.push(`Document summary: ${policyContext.summary || '(no summary)'}`);
   if (policyContext.coverageHighlights?.length) {
     lines.push('Coverage highlights from this document:');
@@ -84,8 +112,27 @@ function formatPolicyContextForPrompt(policyContext) {
     lines.push('Exclusions / limitations from this document:');
     policyContext.exclusionsOrGaps.forEach((h) => lines.push(`  - ${h}`));
   }
+  if (policyContext.benefitMatches?.length) {
+    lines.push('Benefit details from the policy matching this question (use these first):');
+    policyContext.benefitMatches.forEach((h) => lines.push(`  - ${h}`));
+  }
+  if (policyContext.compensationMatches?.length) {
+    lines.push('Rows from Scale of compensation matching this question:');
+    policyContext.compensationMatches.forEach((h) => lines.push(`  - ${h}`));
+  }
+  if (policyContext.relevantChunks?.length) {
+    lines.push('Passages from the full policy document matching this question:');
+    policyContext.relevantChunks.forEach((c) => {
+      lines.push(`  - [${c.topic || 'section'}] ${c.content}`);
+    });
+  } else if (policyContext.relevantExcerpts?.length) {
+    lines.push('Relevant excerpts from the full policy document:');
+    policyContext.relevantExcerpts.forEach((h) => lines.push(`  - ${h}`));
+  }
   lines.push(
-    'IMPORTANT: The customer shared THIS document and is asking about it. Answer using ONLY what this document covers. Do NOT describe life insurance, death benefits, or unrelated products unless this document is clearly a life policy.'
+    'IMPORTANT: The customer shared THIS document. Answer using ONLY facts stated in the passages above.',
+    'For death or beneficiary questions: personal accident policies often label this "Accidental death" (Section 1) with a sum insured amount — quote that if present. Do NOT say the document "does not specify" death benefits when accidental death or sum insured appears above.',
+    'If only partial text was extracted from the PDF, share what IS present and note the rep can verify the exact figure in the original document — never invent amounts.'
   );
   return lines.join('\n');
 }
@@ -99,6 +146,7 @@ Rules you must always follow:
 - If the customer asks you to compare this product against another insurer's product, you may lay out objective, publicly available facts for each side using the web search results (e.g. what a term means, how a feature is typically structured) - but never say or imply which option is "better" or "right for them". Remind them their representative will help them weigh the decision.
 - Write in short, clear, plain English a customer can understand in a live conversation.
 - If none of the talking points or web search results clearly answer the question, do NOT deflect the customer to "check with a supervisor" or "look at the product summary" - that is not an acceptable answer. Instead, briefly share whatever related fact you do have (if any), then ask ONE specific clarifying question that would let the rep pull up exactly what's needed (e.g. which benefit, which policy, which scenario). Keep the conversation moving forward.
+- When the customer asks to compare products or plans and talking points labelled "from URL" contain specific plan names, you MUST name those plans and describe concrete differences from that material (coverage types, term, riders, etc.). Do NOT reply with only generic comparison factors (premium, sum assured, policy term) without citing the named plans from the reference.
 - Keep responses to 2-3 sentences.`;
 
 /**
@@ -140,33 +188,48 @@ async function enhanceGuidance({ triggerText, productType, talkingPoints, webRes
  * Drafts a customer-facing chat reply for human review, grounded in the
  * matched knowledge base entries.
  */
-async function draftChatReply({ customerMessage, productType, talkingPoints, webResults, policyContext = null }) {
+async function draftChatReply({
+  customerMessage,
+  productType,
+  talkingPoints,
+  webResults,
+  policyContext = null,
+  recentHistory = [],
+  compareQuestion = false,
+}) {
   if (!isEnabled()) return null;
   try {
     const openai = getClient();
     const approved = formatTalkingPointsForPrompt(talkingPoints);
     const web = formatWebResultsForPrompt(webResults);
     const policyDoc = formatPolicyContextForPrompt(policyContext);
+    const history = formatRecentHistoryForPrompt(recentHistory, customerMessage);
+
+    const compareNote = compareQuestion
+      ? '\nIMPORTANT: This is a product-comparison question. Prioritize talking points marked [from URL] or comparison-table excerpts. Name specific plans (e.g. PRUActive Protect, PRUCancer 360) and their differences — never give only a generic "factors to compare" answer.\n'
+      : '';
 
     const completion = await withTimeout(
       openai.chat.completions.create({
         model: MODEL,
         temperature: 0.4,
-        max_tokens: 160,
+        max_tokens: compareQuestion ? 280 : 200,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
             content: `Product context: ${productType || 'general'}
+Recent conversation (use for continuity — do not re-ask what was already answered):
+${history}
 Customer uploaded policy document (PRIMARY grounding when present):
 ${policyDoc}
-Customer's chat message: "${customerMessage}"
-Talking points available:
+Customer's latest chat message: "${customerMessage}"
+${compareNote}Talking points available:
 ${approved}
 Web search results available:
 ${web}
 
-Draft a short, warm chat reply the rep can review, edit and send. When a policy document is present, the reply MUST address that document — not generic product-category information. This is a DRAFT for human review only - do not address the customer as if this is final.`,
+Draft a short, warm chat reply the rep can review, edit and send. When a policy document is present, ground answers in that document for the whole conversation — not only when the latest message mentions "policy". Use recent conversation context so follow-up questions (e.g. death benefit after discussing hospital cover) stay on the same document. This is a DRAFT for human review only - do not address the customer as if this is final.`,
           },
         ],
       }),
@@ -191,7 +254,8 @@ Rules you must always follow:
 - Never recommend, advise, evaluate, or tell the rep or customer whether this policy is good, bad, sufficient, or what to do about it. You are not a financial adviser.
 - Never promise or imply a guaranteed outcome unless the document text itself says so verbatim.
 - Write for the representative preparing for a conversation, not for the end customer.
-- Respond with ONLY a JSON object (no markdown fences, no commentary) with exactly these keys: "summary" (string, 2-3 sentences), "coverageHighlights" (array of short strings), "exclusionsOrGaps" (array of short strings), "suggestedQuestions" (array of 3-5 short clarifying questions the rep could ask the customer - never instructing what to buy). Omit a section as an empty array rather than guessing if it is not clearly present in the text.
+- Respond with ONLY a JSON object (no markdown fences, no commentary) with exactly these keys: "summary" (string, 2-3 sentences describing the whole document), "coverageHighlights" (array of short strings — pull facts from ANY section: benefits, tables, percentages, limits, premiums, exclusions), "exclusionsOrGaps" (array of short strings), "suggestedQuestions" (array of 3-5 short clarifying questions the rep could ask the customer - never instructing what to buy). Read the ENTIRE document text provided — do not limit yourself to one section.
+- Personal accident policies often include a "Scale of compensation" table listing disabilities and percentages of sum insured (e.g. "Losing one limb: 50%", "Losing two limbs: 100%"). You MUST include every such row you find in coverageHighlights as "Label: X% of sum insured".
 - Many personal-accident policies include a multi-column "Table of cover" with tiers Basic, Classic, Superior, Premium, Prestige. The customer's enrolled tier is stated in the "Interest insured" / Plan column (e.g. "Superior with Infectious Disease Coverage"). ONLY quote benefit amounts from THAT tier's column — never the highest (Prestige) column by mistake.`;
 
 /**
@@ -243,7 +307,46 @@ async function interpretPolicy({ text, productType, insuredPlanTier = null }) {
   }
 }
 
+const BENEFIT_TABLE_PROMPT = `You extract insurance "Table of cover" benefit amounts from PDF text that may be messy or out of order.
+Return ONLY a JSON object with key "benefitTable" whose values are objects mapping tier names (basic, classic, superior, premium, prestige) to integer dollar amounts (no currency symbols).
+Include only rows you can find evidence for, e.g. accidental_death, family_support, permanent_disability, medical_expenses.
+Example: {"benefitTable":{"accidental_death":{"basic":100000,"classic":200000,"superior":300000,"premium":500000,"prestige":1000000}}}
+If no table amounts found, return {"benefitTable":{}}.`;
+
+/**
+ * LLM fallback to pull structured tier amounts when pdf-parse text is messy.
+ */
+async function extractPolicyBenefitTable(text) {
+  if (!isEnabled() || !text?.trim()) return null;
+  try {
+    const openai = getClient();
+    const truncated = text.length > 14000 ? `${text.slice(0, 14000)}\n...[truncated]` : text;
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.1,
+        max_tokens: 700,
+        messages: [
+          { role: 'system', content: BENEFIT_TABLE_PROMPT },
+          { role: 'user', content: `PDF text:\n"""\n${truncated}\n"""` },
+        ],
+      }),
+      TIMEOUT_MS
+    );
+    const raw = completion?.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    const jsonText = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
+    const parsed = JSON.parse(jsonText);
+    return parsed?.benefitTable && typeof parsed.benefitTable === 'object' ? parsed.benefitTable : null;
+  } catch (err) {
+    console.warn('[openaiService] extractPolicyBenefitTable failed:', err.message);
+    return null;
+  }
+}
+
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
+const WHISPER_MODEL = process.env.OPENAI_WHISPER_MODEL || 'whisper-1';
+const TRANSCRIBE_TIMEOUT_MS = 15000;
 
 /**
  * Embeds a piece of text into a float vector for semantic search
@@ -267,4 +370,81 @@ async function embedText(text) {
   }
 }
 
-module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, embedText };
+/**
+ * Transcribes short audio via OpenAI Whisper. Used by virtual call / face-to-face
+ * channels instead of the browser's fragmented Web Speech API finals.
+ * @param {Buffer} audioBuffer
+ * @param {string} [filename]
+ * @returns {Promise<?string>}
+ */
+async function transcribeAudio(audioBuffer, filename = 'audio.webm') {
+  if (!isEnabled() || !audioBuffer || audioBuffer.length === 0) return null;
+  try {
+    const openai = getClient();
+    const { toFile } = require('openai/uploads');
+    const file = await toFile(audioBuffer, filename);
+    const result = await withTimeout(
+      openai.audio.transcriptions.create({
+        model: WHISPER_MODEL,
+        file,
+        language: 'en',
+        response_format: 'text',
+      }),
+      TRANSCRIBE_TIMEOUT_MS
+    );
+    const text = typeof result === 'string' ? result : result?.text;
+    return text?.trim() || null;
+  } catch (err) {
+    console.warn('[openaiService] transcribeAudio failed:', err.message);
+    return null;
+  }
+}
+
+async function generatePortfolioRecommendations({ customer, policies, portfolio, ruleRecommendations }) {
+  const openai = getClient();
+  if (!openai) return null;
+
+  const policySummary = (policies || [])
+    .map((p) => `${p.productType}: premium ${p.premium}/${p.premiumFreq}, sum assured ${p.coverage?.sumAssured || 'n/a'}`)
+    .join('; ');
+
+  const prompt = `You help explain insurance portfolio gaps in plain English for Singapore clients. NEVER recommend buying a specific product or insurer. Use educational language only.
+
+Customer: ${customer.name}, age ${portfolio.age ?? 'unknown'}, health: ${portfolio.healthCondition || 'not specified'}
+Current policies: ${policySummary || 'none'}
+Coverage gaps detected: ${(portfolio.coverageGaps || []).map((g) => g.label).join(', ') || 'none'}
+Rule-based suggestions: ${JSON.stringify(ruleRecommendations || [])}
+
+Return JSON:
+{
+  "summary": "1-2 sentence overview of their portfolio at this life stage",
+  "recommendations": [
+    {"productType":"life_insurance|critical_illness|integrated_shield_plan|retirement_cpf|ilp","label":"...","priority":"high|medium|low","reason":"plain English why this category is often reviewed at their age","action":"add|enhance"}
+  ]
+}
+Max 5 recommendations. Only use the 5 product types listed.`;
+
+  try {
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+        max_tokens: 700,
+      }),
+      TIMEOUT_MS
+    );
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    if (!Array.isArray(parsed.recommendations)) return null;
+    return parsed;
+  } catch (err) {
+    console.warn('[openaiService] generatePortfolioRecommendations failed:', err.message);
+    return null;
+  }
+}
+
+module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, extractPolicyBenefitTable, embedText, transcribeAudio, generatePortfolioRecommendations };

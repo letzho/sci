@@ -61,4 +61,26 @@ async function persistGuidanceResult(conversationId, guidance) {
   return rows;
 }
 
-module.exports = { insertMessage, persistGuidanceResult };
+/**
+ * Recent customer/agent chat turns for multi-turn draft context (excludes
+ * drafts, transcripts, and policy-document system messages).
+ */
+async function loadRecentChatHistory(conversationId, limit = 6) {
+  if (!conversationId) return [];
+  const rows = await db
+    .prepare(
+      `SELECT sender, kind, content, created_at FROM messages
+       WHERE conversation_id = ? AND kind IN ('text', 'approved')
+       ORDER BY created_at DESC LIMIT ?`
+    )
+    .all(conversationId, limit);
+  return rows
+    .reverse()
+    .map((r) => ({
+      sender: r.sender,
+      content: r.content,
+      createdAt: r.created_at,
+    }));
+}
+
+module.exports = { insertMessage, persistGuidanceResult, loadRecentChatHistory };

@@ -25,6 +25,7 @@ async function clearAll() {
     DELETE FROM guidance_events;
     DELETE FROM messages;
     DELETE FROM policy_uploads;
+    DELETE FROM financial_plans;
     DELETE FROM conversations;
     DELETE FROM learned_chunks;
     DELETE FROM learned_documents;
@@ -61,6 +62,7 @@ async function seedCustomersAndPolicies() {
       dob: '1990-04-12',
       avatar_emoji: '🙂',
       notes: 'Young professional, exploring first protection plan and an ILP for long-term growth.',
+      health_condition: 'Generally healthy, non-smoker',
       policies: [
         {
           product_type: PRODUCT_TYPES.LIFE,
@@ -94,6 +96,7 @@ async function seedCustomersAndPolicies() {
       dob: '1982-11-02',
       avatar_emoji: '👩',
       notes: 'Reviewing critical illness coverage and her Integrated Shield Plan rider before renewal.',
+      health_condition: 'Mild hypertension, controlled with medication',
       policies: [
         {
           product_type: PRODUCT_TYPES.CI,
@@ -127,6 +130,7 @@ async function seedCustomersAndPolicies() {
       dob: '1968-06-25',
       avatar_emoji: '🧓',
       notes: 'Planning retirement income; comparing CPF LIFE payout options with his whole life policy.',
+      health_condition: 'Type 2 diabetes, well-managed',
       policies: [
         {
           product_type: PRODUCT_TYPES.RETIREMENT,
@@ -188,7 +192,7 @@ async function seedCustomersAndPolicies() {
   ];
 
   const custStmt = db.prepare(
-    `INSERT INTO customers (id, name, email, phone, dob, avatar_emoji, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO customers (id, name, email, phone, dob, avatar_emoji, notes, health_condition) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const polStmt = db.prepare(`
     INSERT INTO policies
@@ -197,7 +201,7 @@ async function seedCustomersAndPolicies() {
   `);
 
   for (const c of customers) {
-    await custStmt.run(c.id, c.name, c.email, c.phone, c.dob, c.avatar_emoji, c.notes);
+    await custStmt.run(c.id, c.name, c.email, c.phone, c.dob, c.avatar_emoji, c.notes, c.health_condition || null);
     for (const p of c.policies) {
       await polStmt.run(
         genId('pol'),

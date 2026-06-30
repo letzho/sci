@@ -1,6 +1,12 @@
 const ruleEngine = require('../services/ruleEngine');
 const openaiService = require('../services/openaiService');
-const { extractInsuredPlanTier, reconcileCoverageHighlights } = require('../services/policyTierExtractor');
+const { extractInsuredPlanTier, reconcileCoverageHighlights, parseBenefitTableByTier } = require('../services/policyTierExtractor');
+const {
+  extractCompensationScale,
+  compensationHighlightsFromScale,
+} = require('../services/policyCompensationExtractor');
+const { buildDocumentSections } = require('../services/policyDocumentIndex');
+const { chunkText } = require('../services/documentService');
 
 /**
  * Interpreter Agent
@@ -23,62 +29,34 @@ const { extractInsuredPlanTier, reconcileCoverageHighlights } = require('../serv
 
 const AGENT_NAME = 'Interpreter Agent';
 
-const SECTION_KEYWORDS = {
-  coverage: ['sum assured', 'sum insured', 'coverage', 'covered', 'benefit', 'death benefit', 'payout', 'cash value', 'maturity', 'critical illness benefit'],
-  exclusions: ['exclusion', 'not covered', 'waiting period', 'pre-existing', 'excluded', 'limitation', 'does not cover'],
-  costs: ['premium', 'charge', 'fee', 'deductible', 'co-payment', 'copayment', 'sum payable'],
-  cancellation: ['free-look', 'free look', 'surrender', 'cancellation', 'cooling-off', 'cooling off'],
-};
-
-function splitSentences(text) {
-  return (text.match(/[^.!?\n]+[.!?]?/g) || []).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-}
-
-function findSentencesContaining(sentences, keywords, limit) {
-  const hits = [];
-  for (const s of sentences) {
-    const lower = s.toLowerCase();
-    if (keywords.some((kw) => lower.includes(kw))) {
-      hits.push(s.length > 200 ? `${s.slice(0, 197)}...` : s);
-      if (hits.length >= limit) break;
-    }
-  }
-  return hits;
-}
-
 async function guessProductType(text) {
   const matches = await ruleEngine.findTalkingPoints(text, null, 1);
   return matches.length > 0 ? matches[0].productType : null;
 }
 
 /**
- * Deterministic, network-free baseline analysis. No network calls - it
- * issues one DB lookup (the product-type guess) so callers must await it.
+ * Deterministic baseline: indexes the full document into sections (chunk
+ * previews) rather than hunting only for named keyword sections.
  */
 async function ruleBasedAnalysis(text, productType) {
-  const sentences = splitSentences(text);
-  const coverageHighlights = findSentencesContaining(sentences, SECTION_KEYWORDS.coverage, 4);
-  const exclusionsOrGaps = findSentencesContaining(sentences, SECTION_KEYWORDS.exclusions, 4);
-  const costNotes = findSentencesContaining(sentences, SECTION_KEYWORDS.costs, 3);
-  const cancellationNotes = findSentencesContaining(sentences, SECTION_KEYWORDS.cancellation, 2);
+  const allChunks = chunkText(text);
+  const documentSections = buildDocumentSections(text, 10);
   const resolvedProductType = productType || (await guessProductType(text));
 
-  const summaryParts = [];
-  if (coverageHighlights.length) summaryParts.push(`${coverageHighlights.length} coverage detail${coverageHighlights.length === 1 ? '' : 's'}`);
-  if (exclusionsOrGaps.length) summaryParts.push(`${exclusionsOrGaps.length} exclusion/limitation note${exclusionsOrGaps.length === 1 ? '' : 's'}`);
-  if (costNotes.length) summaryParts.push(`${costNotes.length} cost/premium note${costNotes.length === 1 ? '' : 's'}`);
-
-  const summary = summaryParts.length
-    ? `Scanned the document and found ${summaryParts.join(', ')}. Review the highlights below before the conversation.`
-    : `Scanned the document but couldn't confidently match standard policy sections - it may be a scanned/image PDF or use unusual wording. Open the original file to review it directly.`;
+  const summary =
+    allChunks.length > 0
+      ? `Indexed ${allChunks.length} section(s) from the full policy document for question-time retrieval. Preview key sections below before the conversation.`
+      : `Scanned the document but couldn't extract readable sections - it may be a scanned/image PDF or use unusual wording. Open the original file to review it directly.`;
 
   return {
     productTypeGuess: resolvedProductType || null,
     summary,
-    coverageHighlights,
-    exclusionsOrGaps,
-    costNotes,
-    cancellationNotes,
+    documentChunkCount: allChunks.length,
+    documentSections,
+    coverageHighlights: documentSections.map((s) => `${s.topic}: ${s.preview}`),
+    exclusionsOrGaps: [],
+    costNotes: [],
+    cancellationNotes: [],
     suggestedQuestions: [],
   };
 }
@@ -91,7 +69,7 @@ async function ruleBasedAnalysis(text, productType) {
  *   screen: { productTypeGuess, summary, coverageHighlights, exclusionsOrGaps,
  *   costNotes, cancellationNotes, suggestedQuestions, complianceFlags, source }
  */
-async function analyzePolicyText({ text, productType }) {
+async function analyzePolicyText({ text, productType, extractionQuality = null }) {
   const cleaned = (text || '').trim();
   if (!cleaned) {
     return {
@@ -110,6 +88,8 @@ async function analyzePolicyText({ text, productType }) {
   const base = await ruleBasedAnalysis(cleaned, productType);
   const complianceFlags = await ruleEngine.findComplianceFlags(cleaned, base.productTypeGuess);
   const insuredPlanTier = extractInsuredPlanTier(cleaned);
+  const compensationScale = extractCompensationScale(cleaned);
+  const compensationHighlights = compensationHighlightsFromScale(compensationScale, 10);
 
   let aiResult = null;
   if (openaiService.isEnabled()) {
@@ -126,16 +106,32 @@ async function analyzePolicyText({ text, productType }) {
     aiHighlights: aiResult?.coverageHighlights?.length ? aiResult.coverageHighlights : base.coverageHighlights,
   });
 
+  let benefitTable = parseBenefitTableByTier(cleaned);
+  if (!benefitTable?.accidental_death && openaiService.isEnabled()) {
+    const llmTable = await openaiService.extractPolicyBenefitTable(cleaned);
+    if (llmTable && Object.keys(llmTable).length > 0) {
+      benefitTable = { ...benefitTable, ...llmTable };
+    }
+  }
+
   const result = aiResult
     ? {
         productTypeGuess: base.productTypeGuess,
         insuredPlanTier,
-        summary: aiResult.summary || base.summary,
+        summary: extractionQuality?.warning
+          ? `${aiResult.summary || base.summary} ${extractionQuality.warning}`
+          : aiResult.summary || base.summary,
+        documentChunkCount: base.documentChunkCount,
+        documentSections: base.documentSections,
+        extractionQuality,
         coverageHighlights,
         exclusionsOrGaps: aiResult.exclusionsOrGaps?.length ? aiResult.exclusionsOrGaps : base.exclusionsOrGaps,
         costNotes: base.costNotes,
         cancellationNotes: base.cancellationNotes,
         suggestedQuestions: aiResult.suggestedQuestions?.length ? aiResult.suggestedQuestions : [],
+        compensationScale,
+        compensationHighlights,
+        benefitTable,
         complianceFlags,
         source: 'rule_engine+openai',
       }
@@ -143,7 +139,12 @@ async function analyzePolicyText({ text, productType }) {
         ...base,
         insuredPlanTier,
         coverageHighlights,
+        compensationScale,
+        compensationHighlights,
+        benefitTable,
         complianceFlags,
+        extractionQuality,
+        summary: extractionQuality?.warning ? `${base.summary} ${extractionQuality.warning}` : base.summary,
         source: 'rule_engine',
       };
 

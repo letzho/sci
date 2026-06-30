@@ -4,8 +4,9 @@ import { Mic, MicOff, PhoneOff, Video, VideoOff } from 'lucide-react';
 import api from '../../api/client';
 import { getSocket } from '../../socket.js';
 import { useWebRTC } from '../../hooks/useWebRTC.js';
-import { useSpeechRecognition } from '../../hooks/useSpeechRecognition.js';
+import { useWhisperRecognition } from '../../hooks/useWhisperRecognition.js';
 import ClientQuizOverlay from '../../components/ClientQuizOverlay.jsx';
+import GameSurveyOverlay from '../../components/gameSurvey/GameSurveyOverlay.jsx';
 import ClientCoffeeChatOverlay from '../../components/ClientCoffeeChatOverlay.jsx';
 import ClientCalculatorOverlay from '../../components/ClientCalculatorOverlay.jsx';
 import Logo from '../../components/Logo.jsx';
@@ -39,6 +40,7 @@ export default function ClientCall() {
   const [camOn, setCamOn] = useState(true);
   const [socket] = useState(() => getSocket());
   const [activeQuiz, setActiveQuiz] = useState(null);
+  const [activeGameSurvey, setActiveGameSurvey] = useState(null);
   const [coffeeInvite, setCoffeeInvite] = useState(null);
   const [calculatorResult, setCalculatorResult] = useState(null);
   const [customerProfile, setCustomerProfile] = useState(null);
@@ -84,21 +86,37 @@ export default function ClientCall() {
     if (!socket) return undefined;
     const handleCallEnded = () => navigate('/client');
     const handleQuizStart = ({ quiz }) => setActiveQuiz(quiz);
+    const handleGameSurveyStart = ({ survey }) => {
+      setActiveQuiz(null);
+      setActiveGameSurvey(survey);
+    };
     const handleCoffeeInvite = (payload) => setCoffeeInvite(payload);
     const handleCalculator = ({ result }) => setCalculatorResult(result);
 
     socket.on('call-ended', handleCallEnded);
     socket.on('quiz-start', handleQuizStart);
+    socket.on('game-survey-start', handleGameSurveyStart);
     socket.on('coffee-chat-invite', handleCoffeeInvite);
     socket.on('calculator-shared', handleCalculator);
 
     return () => {
       socket.off('call-ended', handleCallEnded);
       socket.off('quiz-start', handleQuizStart);
+      socket.off('game-survey-start', handleGameSurveyStart);
       socket.off('coffee-chat-invite', handleCoffeeInvite);
       socket.off('calculator-shared', handleCalculator);
     };
   }, [navigate, socket]);
+
+  function handleGameSurveySubmit(answers, gameChoice) {
+    socket.emit('game-survey-submit', {
+      conversationId,
+      productType: conversation?.productContext,
+      answers,
+      gameChoice,
+      customerName: customerProfile?.name || 'Customer',
+    });
+  }
 
   function handleQuizSubmit(answers, onGraded) {
     socket.emit('quiz-submit', {
@@ -119,13 +137,16 @@ export default function ClientCall() {
     });
   }
 
-  const { start: startListening, stop: stopListening } = useSpeechRecognition({ onFinalResult: handleFinal });
+  const { start: startListening, stop: stopListening, ready } = useWhisperRecognition({
+    onFinalResult: handleFinal,
+    mediaStream: localStream,
+  });
 
   useEffect(() => {
-    if (!localStream || !conversation) return undefined;
+    if (!localStream || !conversation || !ready) return undefined;
     startListening();
     return () => stopListening();
-  }, [localStream, conversation, startListening, stopListening]);
+  }, [localStream, conversation, ready, startListening, stopListening]);
 
   function toggleMic() {
     const next = !micOn;
@@ -155,7 +176,15 @@ export default function ClientCall() {
 
   return (
     <div className={`min-h-screen bg-slate-900 flex flex-col ${styles.screen}`}>
-      {activeQuiz && (
+      {activeGameSurvey && (
+        <GameSurveyOverlay
+          survey={activeGameSurvey}
+          customerName={customerProfile?.name}
+          onSubmit={handleGameSurveySubmit}
+          onDismiss={() => setActiveGameSurvey(null)}
+        />
+      )}
+      {activeQuiz && !activeGameSurvey && (
         <ClientQuizOverlay
           quiz={activeQuiz}
           onSubmit={handleQuizSubmit}

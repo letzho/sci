@@ -3,9 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, FileText, Loader2, Paperclip, Send } from 'lucide-react';
 import api from '../../api/client';
 import { getSocket } from '../../socket.js';
+import GameSurveyOverlay from '../../components/gameSurvey/GameSurveyOverlay.jsx';
 import PhoneFrame from '../../components/PhoneFrame.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import { LoadingSpinner } from '../../components/ui.jsx';
+import { mapConversationMessages } from '../../utils/chatMessageFormat.js';
 import styles from './ClientChat.module.css';
 
 // 'policy_document' messages carry a JSON-encoded payload in `content`
@@ -40,6 +42,8 @@ export default function ClientChat() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [activeGameSurvey, setActiveGameSurvey] = useState(null);
+  const [customerProfile, setCustomerProfile] = useState(null);
   const socketRef = useRef(null);
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -48,10 +52,15 @@ export default function ClientChat() {
     async function load() {
       const convoRes = await api.get(`/conversations/${conversationId}`);
       setMessages(
-        convoRes.data.messages.filter((m) => m.kind !== 'draft' && m.kind !== 'transcript').map(parsePolicyMessage)
+        mapConversationMessages(
+          convoRes.data.messages.filter((m) => m.kind !== 'draft' && m.kind !== 'transcript'),
+          { forClient: true }
+        ).map(parsePolicyMessage)
       );
       const agentRes = await api.get('/agents/primary');
       setAgent(agentRes.data.agent);
+      const custRes = await api.get(`/customers/${convoRes.data.conversation.customerId}`);
+      setCustomerProfile(custRes.data.customer);
       setLoading(false);
     }
     load();
@@ -68,12 +77,15 @@ export default function ClientChat() {
     const handlePolicyShared = ({ message }) => {
       setMessages((prev) => [...prev, parsePolicyMessage(message)]);
     };
+    const handleGameSurveyStart = ({ survey }) => setActiveGameSurvey(survey);
     socket.on('chat-message', handleChatMessage);
     socket.on('policy-shared', handlePolicyShared);
+    socket.on('game-survey-start', handleGameSurveyStart);
     return () => {
       socket.emit('leave-room', { conversationId });
       socket.off('chat-message', handleChatMessage);
       socket.off('policy-shared', handlePolicyShared);
+      socket.off('game-survey-start', handleGameSurveyStart);
     };
   }, [conversationId]);
 
@@ -110,6 +122,16 @@ export default function ClientChat() {
     }
   }
 
+  function handleGameSurveySubmit(answers, gameChoice) {
+    socketRef.current?.emit('game-survey-submit', {
+      conversationId,
+      productType: customerProfile?.policies?.[0]?.productType,
+      answers,
+      gameChoice,
+      customerName: customerProfile?.name || 'Customer',
+    });
+  }
+
   if (loading) {
     return (
       <PhoneFrame>
@@ -121,7 +143,16 @@ export default function ClientChat() {
   }
 
   return (
-    <PhoneFrame
+    <>
+      {activeGameSurvey && (
+        <GameSurveyOverlay
+          survey={activeGameSurvey}
+          customerName={customerProfile?.name}
+          onSubmit={handleGameSurveySubmit}
+          onDismiss={() => setActiveGameSurvey(null)}
+        />
+      )}
+      <PhoneFrame
       footer={
         <div className="p-3">
           {uploadError && (
@@ -202,5 +233,6 @@ export default function ClientChat() {
         <div ref={bottomRef} />
       </div>
     </PhoneFrame>
+    </>
   );
 }

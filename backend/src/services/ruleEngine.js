@@ -107,56 +107,75 @@ function tokenize(text) {
   return (text.toLowerCase().match(/[a-z0-9]+/g) || []).filter((w) => w.length > 2 && !STOPWORDS.has(w));
 }
 
+function tokenMatches(queryToken, chunkToken) {
+  if (queryToken === chunkToken) return true;
+  if (queryToken.length > 3 && chunkToken.startsWith(queryToken)) return true;
+  if (chunkToken.length > 3 && queryToken.startsWith(chunkToken)) return true;
+  if (queryToken.endsWith('s') && queryToken.slice(0, -1) === chunkToken) return true;
+  if (chunkToken.endsWith('s') && chunkToken.slice(0, -1) === queryToken) return true;
+  return false;
+}
+
+function countSharedTokens(queryTokens, chunkTokens) {
+  let shared = 0;
+  const matched = [];
+  for (const qt of queryTokens) {
+    if (chunkTokens.some((ct) => tokenMatches(qt, ct))) {
+      shared += 1;
+      matched.push(qt);
+    }
+  }
+  return { shared, matched };
+}
+
+const LEARNED_SELECT = `SELECT lc.*, ld.filename, ld.title, ld.source_type, ld.source_url
+           FROM learned_chunks lc
+           JOIN learned_documents ld ON ld.id = lc.document_id
+           WHERE ld.status = 'active'`;
+
 /**
- * Finds the best-matching chunks from agent-uploaded reference PDFs
- * (backend/src/services/documentService.js) for a piece of text.
- *
- * Unlike the curated knowledge_base (which has hand-picked keywords),
- * uploaded documents are auto-ingested - there are no curated keywords to
- * match against. Instead this scores chunks by how many distinct,
- * non-trivial words they share with the query text, and requires at least
- * 2 shared words so a single coincidental word doesn't surface an
- * unrelated chunk. Every result is tagged source: 'learned' plus the
- * originating document, so it's never confused with pre-approved messaging.
+ * Finds the best-matching chunks from agent-uploaded reference PDFs/URLs.
+ * @param {{ comparisonMode?: boolean }} options
  */
-async function findLearnedTalkingPoints(text, productType, limit = 2) {
+async function findLearnedTalkingPoints(text, productType, limit = 4, options = {}) {
+  const { comparisonMode = false } = options;
   if (!text || !text.trim()) return [];
+
   const queryTokens = new Set(tokenize(text));
   if (queryTokens.size === 0) return [];
 
-  const rows = await (productType
-    ? db
-        .prepare(
-          `SELECT lc.*, ld.filename, ld.title
-           FROM learned_chunks lc
-           JOIN learned_documents ld ON ld.id = lc.document_id
-           WHERE ld.status = 'active' AND (lc.product_type IS NULL OR lc.product_type = ?)`
-        )
-        .all(productType)
-    : db
-        .prepare(
-          `SELECT lc.*, ld.filename, ld.title
-           FROM learned_chunks lc
-           JOIN learned_documents ld ON ld.id = lc.document_id
-           WHERE ld.status = 'active'`
-        )
-        .all());
+  const { chunkLooksLikeComparisonTable } = require('./comparisonQuery');
+
+  // Comparison questions: search all products so a CI URL isn't hidden by session product type.
+  const rows = await (comparisonMode || !productType
+    ? db.prepare(`${LEARNED_SELECT}`).all()
+    : db.prepare(`${LEARNED_SELECT} AND (lc.product_type IS NULL OR lc.product_type = ?)`).all(productType));
 
   const scored = [];
   for (const row of rows) {
     const chunkTokens = tokenize(row.content);
-    const sharedTokens = new Set(chunkTokens.filter((t) => queryTokens.has(t)));
-    if (sharedTokens.size >= 2) {
+    const { shared, matched } = countSharedTokens([...queryTokens], chunkTokens);
+    const isTableChunk = chunkLooksLikeComparisonTable(row.content);
+    const minShared = comparisonMode && isTableChunk ? 1 : 2;
+
+    if (shared >= minShared || (comparisonMode && isTableChunk && shared >= 1)) {
+      let score = shared;
+      if (row.source_type === 'url') score += 2;
+      if (isTableChunk) score += 3;
+      if (comparisonMode && /compare|comparison/i.test(row.title || row.filename || '')) score += 2;
+
       scored.push({
         id: row.id,
         productType: row.product_type,
         topic: row.topic,
         approvedMessage: row.content,
-        plainEnglish: row.content.length > 260 ? `${row.content.slice(0, 257)}...` : row.content,
-        matchedKeywords: [...sharedTokens],
-        score: sharedTokens.size,
+        plainEnglish: row.content.length > 420 ? `${row.content.slice(0, 417)}...` : row.content,
+        matchedKeywords: matched,
+        score,
         source: 'learned',
         sourceDocument: row.title || row.filename,
+        sourceType: row.source_type || 'pdf',
+        sourceUrl: row.source_url || null,
       });
     }
   }

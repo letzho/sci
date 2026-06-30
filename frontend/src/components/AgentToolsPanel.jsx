@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { BookOpenCheck, Calculator, Coffee, GitCompare, DollarSign, ShieldAlert, ShieldCheck, Sparkles, BarChart3 } from 'lucide-react';
+import { BookOpenCheck, Calculator, Coffee, GitCompare, DollarSign, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Gamepad2 } from 'lucide-react';
+import CustomerPlanPanel from './CustomerPlanPanel.jsx';
+import GameSurveyPanel from './gameSurvey/GameSurveyPanel.jsx';
 import api from '../api/client';
 import FinancialCalculator from './FinancialCalculator.jsx';
 import PremiumPredictor from './PremiumPredictor.jsx';
@@ -19,6 +21,8 @@ const TABS = [
   { key: 'premium', label: 'Premium', icon: DollarSign },
   { key: 'compare', label: 'Compare', icon: GitCompare },
   { key: 'quiz', label: 'Quiz', icon: BookOpenCheck },
+  { key: 'gameSurvey', label: 'Game', icon: Gamepad2 },
+  { key: 'plan', label: 'Plan', icon: ClipboardList },
   { key: 'meet', label: 'Meet', icon: Coffee },
 ];
 
@@ -26,6 +30,7 @@ export default function AgentToolsPanel({
   conversationId,
   productType,
   customerName,
+  customerId,
   agentName,
   socket,
   history,
@@ -171,6 +176,19 @@ export default function AgentToolsPanel({
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'plan' && (
+        <CustomerPlanPanel customerId={customerId} embedded />
+      )}
+
+      {tab === 'gameSurvey' && (
+        <GameSurveyPanel
+          conversationId={conversationId}
+          productType={productType}
+          customerName={customerName}
+          socket={socket}
+        />
       )}
 
       {tab === 'meet' && (

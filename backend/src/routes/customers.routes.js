@@ -1,5 +1,7 @@
 const express = require('express');
 const db = require('../db/connection');
+const { buildPortfolioProfile } = require('../services/portfolioService');
+const { getPortfolioRecommendations } = require('../services/recommendationService');
 
 const router = express.Router();
 
@@ -40,6 +42,7 @@ function mapCustomer(row, policies) {
     email: row.email,
     phone: row.phone,
     dob: row.dob,
+    healthCondition: row.health_condition,
     avatarEmoji: row.avatar_emoji,
     notes: row.notes,
     policies: policies.map(mapPolicy),
@@ -54,6 +57,31 @@ router.get('/', async (req, res) => {
     result.push(mapCustomer(c, await policyStmt.all(c.id)));
   }
   res.json({ customers: result });
+});
+
+router.get('/:id/profile', async (req, res) => {
+  const customer = await db.prepare(`SELECT * FROM customers WHERE id = ?`).get(req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  const policies = await db.prepare(`SELECT * FROM policies WHERE customer_id = ? ORDER BY created_at ASC`).all(customer.id);
+  const mapped = mapCustomer(customer, policies);
+  const portfolio = buildPortfolioProfile(mapped, mapped.policies);
+  res.json({ customer: mapped, portfolio });
+});
+
+router.post('/:id/recommendations', async (req, res) => {
+  const customer = await db.prepare(`SELECT * FROM customers WHERE id = ?`).get(req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  const policies = await db.prepare(`SELECT * FROM policies WHERE customer_id = ? ORDER BY created_at ASC`).all(customer.id);
+  const mapped = mapCustomer(customer, policies);
+  const result = await getPortfolioRecommendations(mapped, mapped.policies);
+  res.json({
+    customer: mapped,
+    recommendations: result.recommendations,
+    summary: result.summary || null,
+    portfolio: result.portfolio,
+    disclaimer: result.disclaimer,
+    source: result.source,
+  });
 });
 
 router.get('/:id', async (req, res) => {

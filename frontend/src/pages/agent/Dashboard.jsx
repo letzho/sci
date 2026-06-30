@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, DollarSign } from 'lucide-react';
+import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, DollarSign, ClipboardList } from 'lucide-react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { mergeGamification, useGamificationBonus } from '../../context/GamificationBonusContext.jsx';
@@ -247,6 +247,14 @@ export default function Dashboard() {
                   </Button>
                 ))}
               </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full mt-2"
+                onClick={() => navigate(`/agent/customers/${customer.id}/plan`)}
+              >
+                <ClipboardList size={14} /> Plan & export PDF
+              </Button>
             </Card>
           ))}
         </div>

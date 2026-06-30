@@ -24,6 +24,12 @@ const BENEFIT_ROWS = [
     label: 'Medical expenses (accident injury)',
     section: 'Section 4',
   },
+  {
+    key: 'family_support',
+    patterns: [/family support fund/i],
+    label: 'Family support fund',
+    section: 'Section 12',
+  },
 ];
 
 function capitalizeTier(tier) {
@@ -31,20 +37,39 @@ function capitalizeTier(tier) {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
-function parseDollarAmounts(line) {
+function parseDollarAmounts(text) {
   const amounts = [];
-  for (const m of line.matchAll(/\$\s*([\d,]+(?:\.\d{2})?)/g)) {
-    const n = parseInt(m[1].replace(/,/g, ''), 10);
-    if (Number.isFinite(n) && n >= 100) amounts.push(n);
-  }
-  if (amounts.length >= 3) return amounts;
+  const seen = new Set();
 
-  const fallback = [];
-  for (const m of line.matchAll(/(?:^|\s)(\d{2,3}(?:,\d{3})+|\d{5,7})(?:\s|$)/g)) {
-    const n = parseInt(m[1].replace(/,/g, ''), 10);
-    if (Number.isFinite(n) && n >= 1000) fallback.push(n);
+  function push(n) {
+    if (!Number.isFinite(n) || n < 100 || seen.has(n)) return;
+    seen.add(n);
+    amounts.push(n);
   }
-  return fallback.length >= amounts.length ? fallback : amounts;
+
+  for (const m of (text || '').matchAll(/(?:S\s*\$|\$)\s*([\d,]+(?:\.\d{2})?)/gi)) {
+    push(parseInt(m[1].replace(/,/g, ''), 10));
+  }
+  if (amounts.length >= 5) return amounts;
+
+  for (const m of (text || '').matchAll(/\b(\d{1,3}(?:,\d{3})+)\b/g)) {
+    push(parseInt(m[1].replace(/,/g, ''), 10));
+  }
+  if (amounts.length >= 5) return amounts;
+
+  for (const m of (text || '').matchAll(/(?:^|\s)(\d{5,7})(?:\s|$)/g)) {
+    push(parseInt(m[1], 10));
+  }
+  return amounts;
+}
+
+/**
+ * After a benefit label, grab the next window of text and pull five tier amounts.
+ */
+function parseAmountsNearLabel(tableText, labelPattern) {
+  const match = tableText.match(new RegExp(`${labelPattern.source}[\\s\\S]{0,800}`, 'i'));
+  if (!match) return [];
+  return parseDollarAmounts(match[0]);
 }
 
 function formatSgd(amount) {
@@ -94,25 +119,90 @@ function extractInsuredPlanTier(text) {
  * Returns { accidental_death: { basic: n, classic: n, ... }, ... }.
  */
 function parseBenefitTableByTier(text) {
-  const section = text.match(/Table\s+of\s+cover[\s\S]{0,12000}/i);
-  if (!section) return {};
+  const section = text.match(/Table\s+of\s+cover[\s\S]{0,15000}/i);
+  const tableText = section ? section[0] : text;
+  if (!tableText) return {};
 
   const table = {};
-  const lines = section[0].split(/\n+/);
 
-  for (const line of lines) {
-    for (const row of BENEFIT_ROWS) {
+  for (const row of BENEFIT_ROWS) {
+    if (table[row.key]) continue;
+
+    for (const pattern of row.patterns) {
+      const amounts = parseAmountsNearLabel(tableText, pattern);
+      if (amounts.length >= 5) {
+        table[row.key] = {};
+        TIER_ORDER.forEach((tier, i) => {
+          table[row.key][tier] = amounts[i];
+        });
+        break;
+      }
+    }
+
+    if (table[row.key]) continue;
+
+    const lines = tableText.split(/\n+/);
+    for (const line of lines) {
       if (!row.patterns.some((p) => p.test(line))) continue;
       const amounts = parseDollarAmounts(line);
-      if (amounts.length < 5) continue;
-      table[row.key] = {};
-      TIER_ORDER.forEach((tier, i) => {
-        table[row.key][tier] = amounts[i];
-      });
-      break;
+      if (amounts.length >= 5) {
+        table[row.key] = {};
+        TIER_ORDER.forEach((tier, i) => {
+          table[row.key][tier] = amounts[i];
+        });
+        break;
+      }
     }
   }
+
   return table;
+}
+
+function mergeBenefitTables(parsed, stored) {
+  if (!stored || typeof stored !== 'object') return parsed || {};
+  const out = { ...(parsed || {}) };
+  for (const [key, tiers] of Object.entries(stored)) {
+    if (tiers && typeof tiers === 'object') {
+      out[key] = { ...(out[key] || {}), ...tiers };
+    }
+  }
+  return out;
+}
+
+/** All tier amounts for one benefit row — used when plan tier is unknown. */
+function formatBenefitAllTiers(text, benefitKey, storedTable = null) {
+  const table = mergeBenefitTables(parseBenefitTableByTier(text), storedTable);
+  const row = table[benefitKey];
+  if (!row) return null;
+  return TIER_ORDER.filter((tier) => row[tier])
+    .map((tier) => `${capitalizeTier(tier)}: ${formatSgd(row[tier])}`)
+    .join('; ');
+}
+
+function getDeathBenefitAnswer(text, tier, storedTable = null) {
+  const resolvedTier = tier || extractInsuredPlanTier(text);
+  const table = mergeBenefitTables(parseBenefitTableByTier(text), storedTable);
+  const death = table.accidental_death;
+
+  if (resolvedTier && death?.[resolvedTier]) {
+    const tierLabel = capitalizeTier(resolvedTier);
+    const amount = formatSgd(death[resolvedTier]);
+    const family = table.family_support?.[resolvedTier];
+    const parts = [
+      `Accidental death (Section 1, ${tierLabel} plan): beneficiaries would receive up to ${amount} for accidental death, per the Table of cover.`,
+    ];
+    if (family) {
+      parts.push(`Family support fund (Section 12, ${tierLabel} plan): up to ${formatSgd(family)}.`);
+    }
+    return parts.join(' ');
+  }
+
+  if (death && Object.keys(death).length > 0) {
+    const allTiers = formatBenefitAllTiers(text, 'accidental_death', storedTable);
+    return `Accidental death (Section 1) per Table of cover — amount depends on plan tier: ${allTiers}.`;
+  }
+
+  return null;
 }
 
 function buildTierCoverageHighlights(text, tier) {
@@ -209,4 +299,6 @@ module.exports = {
   buildTierCoverageHighlights,
   filterHighlightsForTier,
   reconcileCoverageHighlights,
+  getDeathBenefitAnswer,
+  formatBenefitAllTiers,
 };

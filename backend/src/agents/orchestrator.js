@@ -3,7 +3,9 @@ const knowledgeAgent = require('./knowledgeAgent');
 const complianceAgent = require('./complianceAgent');
 const draftingAgent = require('./draftingAgent');
 const researchAgent = require('./researchAgent');
-const { loadPolicyContext, messageAboutUploadedPolicy, policyToTalkingPoints } = require('../services/policyContext');
+const { loadPolicyContext, policyToTalkingPoints, enrichPolicyContextForQuestion } = require('../services/policyContext');
+const { loadRecentChatHistory } = require('../db/repo');
+const { isComparisonQuery, inferCompareProductType } = require('../services/comparisonQuery');
 
 /**
  * Orchestrator
@@ -34,8 +36,17 @@ const { loadPolicyContext, messageAboutUploadedPolicy, policyToTalkingPoints } =
 const AGENT_NAME = 'Orchestrator';
 
 async function getLiveGuidance({ text, productType }) {
-  const nlu = await nluAgent.analyze({ text, productType });
-  const talkingPoints = await knowledgeAgent.findTalkingPoints({ text: nlu.text, productType: nlu.productType });
+  const compareQuestion = isComparisonQuery(text);
+  const nlu = await nluAgent.analyze({
+    text,
+    productType: compareQuestion ? inferCompareProductType(text, productType) : productType,
+  });
+  const talkingPoints = await knowledgeAgent.findTalkingPoints({
+    text: nlu.text,
+    productType: nlu.productType,
+    preferLearned: compareQuestion,
+    limit: compareQuestion ? 8 : 5,
+  });
   const complianceFlags = await complianceAgent.checkCompliance({ text: nlu.text, productType: nlu.productType });
   const webResults = await researchAgent.supplement({ text: nlu.text, productType: nlu.productType, talkingPoints });
 
@@ -67,31 +78,41 @@ async function getLiveGuidance({ text, productType }) {
 }
 
 async function getChatDraft({ customerMessage, productType, conversationId }) {
-  const policyContext = conversationId ? await loadPolicyContext(conversationId) : null;
-  const aboutUploadedDoc = policyContext && messageAboutUploadedPolicy(customerMessage);
+  const rawPolicyContext = conversationId ? await loadPolicyContext(conversationId) : null;
+  const hasPolicyDoc = Boolean(rawPolicyContext);
+  const recentHistory = conversationId ? await loadRecentChatHistory(conversationId, 6) : [];
+  const policyContext = hasPolicyDoc
+    ? await enrichPolicyContextForQuestion(rawPolicyContext, customerMessage, recentHistory)
+    : null;
 
-  // When the customer shared a policy PDF and is asking about it, ground the draft
-  // in that document — not the conversation's default product (e.g. life insurance).
-  const effectiveProductType =
-    aboutUploadedDoc && policyContext.documentProductType
-      ? policyContext.documentProductType
+  const compareQuestion = isComparisonQuery(customerMessage);
+
+  // Once a customer policy PDF is uploaded, keep grounding on it — except for
+  // explicit product-comparison questions (e.g. CI plan table from Knowledge Library URL).
+  const effectiveProductType = compareQuestion
+    ? inferCompareProductType(customerMessage, productType)
+    : hasPolicyDoc && rawPolicyContext?.documentProductType
+      ? rawPolicyContext.documentProductType
       : productType;
 
   const nlu = await nluAgent.analyze({ text: customerMessage, productType: effectiveProductType });
 
-  let talkingPoints = await knowledgeAgent.findTalkingPoints({ text: nlu.text, productType: nlu.productType });
+  let talkingPoints = await knowledgeAgent.findTalkingPoints({
+    text: nlu.text,
+    productType: nlu.productType,
+    preferLearned: hasPolicyDoc || compareQuestion,
+    limit: compareQuestion ? 8 : 6,
+  });
 
-  if (aboutUploadedDoc) {
+  if (hasPolicyDoc && !compareQuestion) {
     const policyPoints = policyToTalkingPoints(policyContext);
-    talkingPoints = [...policyPoints, ...talkingPoints].slice(0, 5);
+    talkingPoints = [...policyPoints, ...talkingPoints].slice(0, 8);
   }
 
   const complianceFlags = await complianceAgent.checkCompliance({ text: nlu.text, productType: nlu.productType });
 
-  // Skip generic web search when we have solid grounding from the uploaded policy —
-  // otherwise Tavily returns irrelevant life-insurance pages for hospital questions.
   let webResults = [];
-  if (!aboutUploadedDoc || talkingPoints.length < 2) {
+  if (!hasPolicyDoc || compareQuestion || talkingPoints.length < 2) {
     webResults = await researchAgent.supplement({ text: nlu.text, productType: nlu.productType, talkingPoints });
   }
 
@@ -100,21 +121,25 @@ async function getChatDraft({ customerMessage, productType, conversationId }) {
     productType: nlu.productType,
     talkingPoints,
     webResults,
-    policyContext: aboutUploadedDoc ? policyContext : null,
+    policyContext: hasPolicyDoc && !compareQuestion ? policyContext : null,
+    recentHistory,
+    compareQuestion,
   });
 
   const basedOn = [...new Set([
-    ...(aboutUploadedDoc && policyContext
+    ...(hasPolicyDoc && policyContext
       ? [`${policyContext.filename} (customer uploaded policy — Interpreter Agent)`]
       : []),
-    ...talkingPoints.map((t) =>
-      t.source === 'learned' ? `${t.topic} (from ${t.sourceDocument || 'uploaded document'})` : t.topic
-    ),
+    ...talkingPoints.map((t) => {
+      if (t.source !== 'learned') return t.topic;
+      const src = t.sourceType === 'url' && t.sourceUrl ? t.sourceUrl : t.sourceDocument || 'uploaded document';
+      return `${t.topic} (from ${src})`;
+    }),
     ...webResults.map((r) => `${r.title || r.url} (from the web)`),
   ])];
 
   console.log(
-    `[${AGENT_NAME}] chat-draft pipeline complete (source=${source}, policyGrounded=${Boolean(aboutUploadedDoc)}, ${webResults.length} web result(s))`
+    `[${AGENT_NAME}] chat-draft pipeline complete (source=${source}, policyGrounded=${hasPolicyDoc}, compareMode=${compareQuestion}, historyTurns=${recentHistory.length}, ${webResults.length} web result(s))`
   );
 
   return {
@@ -125,7 +150,7 @@ async function getChatDraft({ customerMessage, productType, conversationId }) {
     basedOn,
     webResults,
     complianceFlags,
-    policyGrounded: Boolean(aboutUploadedDoc),
+    policyGrounded: hasPolicyDoc,
     source,
     generatedAt: new Date().toISOString(),
   };
