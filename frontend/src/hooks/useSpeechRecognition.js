@@ -1,14 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+const DEFAULT_UTTERANCE_PAUSE_MS = 1800;
+const DEFAULT_MAX_UTTERANCE_MS = 25000;
+
 /**
  * Wraps the browser-native Web Speech API (SpeechRecognition) for continuous,
- * real-time speech-to-text. Free, no API key, no network round-trip - this
- * is the "Browser-native Web Speech API" option (best support in Chrome).
+ * real-time speech-to-text. Final fragments are merged into full sentences
+ * (flushed after a short pause) so guidance gets meaningful utterances.
  */
-export function useSpeechRecognition({ onFinalResult, lang = 'en-SG', continuous = true } = {}) {
+export function useSpeechRecognition({
+  onFinalResult,
+  lang = 'en-SG',
+  continuous = true,
+  utterancePauseMs = DEFAULT_UTTERANCE_PAUSE_MS,
+  maxUtteranceMs = DEFAULT_MAX_UTTERANCE_MS,
+} = {}) {
   const recognitionRef = useRef(null);
   const wantsListeningRef = useRef(false);
   const onFinalResultRef = useRef(onFinalResult);
+  const bufferRef = useRef('');
+  const flushTimerRef = useRef(null);
+  const utteranceStartRef = useRef(null);
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [isSupported, setIsSupported] = useState(true);
@@ -16,6 +28,40 @@ export function useSpeechRecognition({ onFinalResult, lang = 'en-SG', continuous
   useEffect(() => {
     onFinalResultRef.current = onFinalResult;
   }, [onFinalResult]);
+
+  const flushBuffer = useCallback((force = false) => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const text = bufferRef.current.trim();
+    bufferRef.current = '';
+    utteranceStartRef.current = null;
+    if (text) {
+      onFinalResultRef.current?.(text);
+    }
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => flushBuffer(true), utterancePauseMs);
+
+    const now = Date.now();
+    if (!utteranceStartRef.current) utteranceStartRef.current = now;
+    if (now - utteranceStartRef.current >= maxUtteranceMs) {
+      flushBuffer(true);
+    }
+  }, [flushBuffer, maxUtteranceMs, utterancePauseMs]);
+
+  const appendFinal = useCallback(
+    (text) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      bufferRef.current = bufferRef.current ? `${bufferRef.current} ${trimmed}` : trimmed;
+      scheduleFlush();
+    },
+    [scheduleFlush]
+  );
 
   useEffect(() => {
     const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -31,16 +77,20 @@ export function useSpeechRecognition({ onFinalResult, lang = 'en-SG', continuous
 
     recognition.onresult = (event) => {
       let interim = '';
+      let finalsInEvent = '';
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0]?.transcript || '';
         if (result.isFinal) {
           const trimmed = text.trim();
-          if (trimmed && onFinalResultRef.current) onFinalResultRef.current(trimmed);
+          if (trimmed) finalsInEvent = finalsInEvent ? `${finalsInEvent} ${trimmed}` : trimmed;
         } else {
           interim += text;
         }
       }
+
+      if (finalsInEvent) appendFinal(finalsInEvent);
       setInterimText(interim);
     };
 
@@ -54,23 +104,21 @@ export function useSpeechRecognition({ onFinalResult, lang = 'en-SG', continuous
       } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
         console.warn('[useSpeechRecognition] error:', event.error);
       }
-      // 'aborted' and 'no-speech' are transient — onend will auto-restart
     };
 
     recognition.onend = () => {
       if (wantsListeningRef.current) {
-        // Small delay avoids the "already starting" race that causes aborted errors
-        // when StrictMode or rapid stop/start cycles happen
         setTimeout(() => {
           if (wantsListeningRef.current) {
             try {
               recognition.start();
-            } catch (_) {
+            } catch {
               /* already restarting */
             }
           }
         }, 100);
       } else {
+        flushBuffer(true);
         setIsListening(false);
       }
     };
@@ -79,34 +127,38 @@ export function useSpeechRecognition({ onFinalResult, lang = 'en-SG', continuous
 
     return () => {
       wantsListeningRef.current = false;
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       try {
         recognition.stop();
-      } catch (_) {
+      } catch {
         /* noop */
       }
     };
-  }, [lang, continuous]);
+  }, [appendFinal, continuous, flushBuffer, lang]);
 
   const start = useCallback(() => {
     if (!recognitionRef.current) return;
+    bufferRef.current = '';
+    utteranceStartRef.current = null;
     wantsListeningRef.current = true;
     setIsListening(true);
     try {
       recognitionRef.current.start();
-    } catch (_) {
+    } catch {
       /* already started */
     }
   }, []);
 
   const stop = useCallback(() => {
     wantsListeningRef.current = false;
+    flushBuffer(true);
     setIsListening(false);
     try {
-      recognitionRef.current && recognitionRef.current.stop();
-    } catch (_) {
+      recognitionRef.current?.stop();
+    } catch {
       /* noop */
     }
-  }, []);
+  }, [flushBuffer]);
 
   return { isSupported, isListening, interimText, start, stop };
 }
