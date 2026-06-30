@@ -21,11 +21,24 @@ function canUseMediaRecorder() {
   return typeof MediaRecorder !== 'undefined';
 }
 
-/** Try to create and start a recorder; returns null if this browser/stream combo is unsupported. */
-function createStartedRecorder(stream, onChunk) {
-  if (!canUseMediaRecorder() || !stream?.getAudioTracks?.().length) return null;
+function browserSpeechAvailable() {
+  if (typeof window === 'undefined') return false;
+  return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
 
-  for (const mimeType of RECORDER_MIME_TYPES) {
+function supportedMimeTypes() {
+  if (!canUseMediaRecorder()) return [];
+  return RECORDER_MIME_TYPES.filter((mime) => !mime || MediaRecorder.isTypeSupported(mime));
+}
+
+/** Try to create and start a recorder; returns null if unsupported for this stream. */
+function createStartedRecorder(stream, onChunk) {
+  if (!stream?.getAudioTracks?.().length) return null;
+
+  const mimeTypes = supportedMimeTypes();
+  const candidates = mimeTypes.length ? mimeTypes : [''];
+
+  for (const mimeType of candidates) {
     try {
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorder.ondataavailable = (e) => {
@@ -33,10 +46,75 @@ function createStartedRecorder(stream, onChunk) {
       };
       recorder.start(250);
       return recorder;
-    } catch (err) {
-      console.warn('[useWhisperRecognition] MediaRecorder failed:', mimeType || 'default', err.message);
+    } catch {
+      /* try next mime / stream */
     }
   }
+  return null;
+}
+
+/** Quick check — WebRTC streams often fail MediaRecorder on Safari/Chrome mobile. */
+function canRecordStream(stream) {
+  const recorder = createStartedRecorder(stream, () => {});
+  if (!recorder) return false;
+  try {
+    recorder.stop();
+  } catch {
+    /* noop */
+  }
+  return true;
+}
+
+async function openDedicatedMic(streamRef, ownedStreamRef) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true },
+    video: false,
+  });
+  streamRef.current = stream;
+  ownedStreamRef.current = true;
+  return stream;
+}
+
+function useWebRtcMic(mediaStreamRef, streamRef, ownedStreamRef) {
+  const webrtc = mediaStreamRef.current;
+  if (!webrtc?.getAudioTracks?.().length) return null;
+  streamRef.current = webrtc;
+  ownedStreamRef.current = false;
+  return webrtc;
+}
+
+function cloneWebRtcAudio(mediaStreamRef, streamRef, ownedStreamRef) {
+  const track = mediaStreamRef.current?.getAudioTracks?.()[0];
+  if (!track) return null;
+  const cloned = track.clone();
+  streamRef.current = new MediaStream([cloned]);
+  ownedStreamRef.current = true;
+  return streamRef.current;
+}
+
+/** Pick a stream MediaRecorder can actually record (dedicated mic preferred). */
+async function resolveRecordableStream(mediaStreamRef, streamRef, ownedStreamRef) {
+  try {
+    const dedicated = await openDedicatedMic(streamRef, ownedStreamRef);
+    if (canRecordStream(dedicated)) return dedicated;
+    dedicated.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    ownedStreamRef.current = false;
+  } catch {
+    /* mic may already be held by WebRTC */
+  }
+
+  const webrtc = useWebRtcMic(mediaStreamRef, streamRef, ownedStreamRef);
+  if (webrtc && canRecordStream(webrtc)) return webrtc;
+
+  const cloned = cloneWebRtcAudio(mediaStreamRef, streamRef, ownedStreamRef);
+  if (cloned && canRecordStream(cloned)) return cloned;
+  if (cloned) {
+    cloned.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    ownedStreamRef.current = false;
+  }
+
   return null;
 }
 
@@ -46,9 +124,14 @@ function blobFilename(mimeType) {
   return 'utterance.webm';
 }
 
+function preferWhisperMode() {
+  return import.meta.env.VITE_USE_WHISPER === 'true';
+}
+
 /**
- * Speech-to-text via OpenAI Whisper (utterances after a pause), with fallback
- * to the browser Web Speech API when Whisper is unavailable or MediaRecorder fails.
+ * Speech-to-text for virtual calls.
+ * Default: browser Web Speech API (Chrome/Edge on localhost — reliable for local demos).
+ * Optional: set VITE_USE_WHISPER=true to use OpenAI Whisper via MediaRecorder instead.
  */
 export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-SG', enabled = true } = {}) {
   const onFinalResultRef = useRef(onFinalResult);
@@ -72,6 +155,7 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
   const mediaStreamRef = useRef(mediaStream);
   const whisperUnavailableRef = useRef(false);
   const modeRef = useRef(mode);
+  const fallbackLoggedRef = useRef(false);
 
   useEffect(() => {
     onFinalResultRef.current = onFinalResult;
@@ -90,16 +174,26 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
       setMode('browser');
       return undefined;
     }
+
+    // Default: browser speech (no Whisper / MediaRecorder) — best for local PC demos.
+    if (!preferWhisperMode() && browserSpeechAvailable()) {
+      setMode('browser');
+      return undefined;
+    }
+
     let cancelled = false;
     api
       .get('/guidance/transcribe/status')
       .then((res) => {
-        if (!cancelled && !whisperUnavailableRef.current) {
-          setMode(res.data?.whisper ? 'whisper' : 'browser');
-        }
+        if (cancelled || whisperUnavailableRef.current) return;
+        if (preferWhisperMode() && res.data?.whisper && canUseMediaRecorder()) setMode('whisper');
+        else if (browserSpeechAvailable()) setMode('browser');
+        else setMode('unsupported');
       })
       .catch(() => {
-        if (!cancelled) setMode('browser');
+        if (cancelled) return;
+        if (browserSpeechAvailable()) setMode('browser');
+        else setMode('unsupported');
       });
     return () => {
       cancelled = true;
@@ -108,20 +202,39 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
 
   const browser = useSpeechRecognition({
     onFinalResult: (text) => {
-      if (modeRef.current === 'browser' && onFinalResultRef.current) onFinalResultRef.current(text);
+      const useBrowser = modeRef.current === 'browser' || whisperUnavailableRef.current;
+      if (useBrowser && onFinalResultRef.current) onFinalResultRef.current(text);
     },
     lang,
     continuous: true,
   });
 
   const switchToBrowserMode = useCallback(() => {
+    cleanupWhisperRef.current?.();
     whisperUnavailableRef.current = true;
+
+    if (!browserSpeechAvailable()) {
+      console.warn('[useWhisperRecognition] Whisper unavailable and browser speech not supported on this device');
+      setMode('unsupported');
+      wantsListeningRef.current = false;
+      setIsListening(false);
+      setIsSupported(false);
+      return;
+    }
+
+    if (!fallbackLoggedRef.current) {
+      console.info('[useWhisperRecognition] Falling back to browser speech-to-text');
+      fallbackLoggedRef.current = true;
+    }
+
     setMode('browser');
     wantsListeningRef.current = true;
     setIsListening(true);
-    if (browser.isSupported) browser.start();
-    else setIsSupported(false);
+    setIsSupported(true);
+    browser.start();
   }, [browser]);
+
+  const cleanupWhisperRef = useRef(null);
 
   const cleanupWhisper = useCallback(() => {
     if (pollTimerRef.current) {
@@ -151,6 +264,8 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
     streamRef.current = null;
     ownedStreamRef.current = false;
   }, []);
+
+  cleanupWhisperRef.current = cleanupWhisper;
 
   const transcribeBlob = useCallback(async (blob, mimeType) => {
     const form = new FormData();
@@ -192,12 +307,13 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
         if (text && onFinalResultRef.current) onFinalResultRef.current(text);
       }
     } catch (err) {
-      console.warn('[useWhisperRecognition] transcribe failed:', err.message);
+      console.warn('[useWhisperRecognition] Whisper transcribe failed:', err.message);
+      switchToBrowserMode();
     } finally {
       setInterimText('');
       busyRef.current = false;
     }
-  }, [transcribeBlob]);
+  }, [switchToBrowserMode, transcribeBlob]);
 
   const startRecorder = useCallback(() => {
     if (busyRef.current || recorderRef.current || isSpeakingRef.current) return;
@@ -207,8 +323,6 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
     chunksRef.current = [];
     const recorder = createStartedRecorder(stream, (data) => chunksRef.current.push(data));
     if (!recorder) {
-      console.warn('[useWhisperRecognition] MediaRecorder unsupported — using browser speech');
-      cleanupWhisper();
       switchToBrowserMode();
       return;
     }
@@ -218,7 +332,7 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
     silenceStartRef.current = null;
     isSpeakingRef.current = true;
     setInterimText('Listening…');
-  }, [cleanupWhisper, switchToBrowserMode]);
+  }, [switchToBrowserMode]);
 
   const pollVolume = useCallback(() => {
     const analyser = analyserRef.current;
@@ -256,17 +370,17 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
 
     wantsListeningRef.current = true;
     setIsListening(true);
+
     try {
-      // Dedicated audio stream — recording from a WebRTC video stream breaks MediaRecorder on Safari/mobile.
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-        video: false,
-      });
-      ownedStreamRef.current = true;
+      const stream = await resolveRecordableStream(mediaStreamRef, streamRef, ownedStreamRef);
+      if (!stream) {
+        switchToBrowserMode();
+        return;
+      }
 
       const ctx = new AudioContext();
       if (ctx.state === 'suspended') await ctx.resume();
-      const source = ctx.createMediaStreamSource(streamRef.current);
+      const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       source.connect(analyser);
@@ -274,13 +388,10 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
       analyserRef.current = analyser;
       pollTimerRef.current = setInterval(pollVolume, POLL_MS);
     } catch (err) {
-      console.warn('[useWhisperRecognition] mic setup failed:', err.message);
-      wantsListeningRef.current = false;
-      setIsListening(false);
-      if (browser.isSupported) switchToBrowserMode();
-      else setIsSupported(false);
+      console.warn('[useWhisperRecognition] Whisper mic setup failed:', err.message);
+      switchToBrowserMode();
     }
-  }, [browser.isSupported, pollVolume, switchToBrowserMode]);
+  }, [pollVolume, switchToBrowserMode]);
 
   const stopWhisper = useCallback(() => {
     wantsListeningRef.current = false;
@@ -293,8 +404,12 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
 
   const start = useCallback(() => {
     if (mode === 'checking') return;
+    if (mode === 'unsupported') return;
     if (mode === 'browser' || whisperUnavailableRef.current) {
-      if (!browser.isSupported) setIsSupported(false);
+      if (!browserSpeechAvailable()) {
+        setIsSupported(false);
+        return;
+      }
       browser.start();
       setIsListening(true);
       return;
@@ -311,15 +426,17 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
     stopWhisper();
   }, [browser, mode, stopWhisper]);
 
-  const listening = mode === 'browser' || whisperUnavailableRef.current ? browser.isListening : isListening;
-  const interim = mode === 'browser' || whisperUnavailableRef.current ? browser.interimText : interimText;
-  const supported = mode === 'browser' || whisperUnavailableRef.current ? browser.isSupported : isSupported;
+  const usingBrowser = mode === 'browser' || whisperUnavailableRef.current;
+  const listening = usingBrowser ? browser.isListening : isListening;
+  const interim = usingBrowser ? browser.interimText : interimText;
+  const supported =
+    mode === 'unsupported' ? false : usingBrowser ? browser.isSupported || browserSpeechAvailable() : isSupported;
 
   return {
     isSupported: supported && mode !== 'checking',
     isListening: listening,
     interimText: interim,
-    mode: whisperUnavailableRef.current ? 'browser' : mode,
+    mode: mode === 'unsupported' ? 'unsupported' : usingBrowser ? 'browser' : mode,
     ready: mode !== 'checking',
     start,
     stop,

@@ -131,6 +131,8 @@ export default function ClientCall() {
 
   function handleFinal(text) {
     const conv = conversationRef.current;
+    if (!text?.trim()) return;
+    console.log('[ClientCall] customer-speech:', text.slice(0, 80));
     socket.emit('customer-speech', {
       conversationId,
       text,

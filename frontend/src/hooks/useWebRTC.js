@@ -93,10 +93,8 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
     pc.ontrack = (event) => {
       const ms = remoteStreamRef.current;
-      if (!ms.getTracks().some((t) => t.id === event.track.id)) {
-        ms.addTrack(event.track);
-      }
-      // New object reference so React re-renders and <video> picks up tracks.
+      if (ms.getTracks().some((t) => t.id === event.track.id)) return;
+      ms.addTrack(event.track);
       const playable = new MediaStream(ms.getTracks());
       remoteStreamRef.current = playable;
       setRemoteStream(playable);
