@@ -1,14 +1,37 @@
 # Render deployment (backend Web Service)
 
-## Settings
+## Render dashboard settings (important)
 
 | Field | Value |
 |-------|--------|
-| Root Directory | `backend` |
-| Build Command | `npm install` |
-| Start Command | `node server.js` |
+| **Environment** | Node (not Python) |
+| **Root Directory** | `backend` |
+| **Build Command** | `npm install` — or `bash render-build.sh` |
+| **Start Command** | `node server.js` |
 
-Use `bash start.sh` only if Python is available on your Render plan (for ML premium predictor).
+### Do NOT put Python in the build command
+
+If Build Command includes `pip install -r ml/requirements.txt` or `bash start.sh`, the deploy can fail with:
+
+```
+BackendUnavailable: Cannot import 'setuptools.build_meta'
+```
+
+That happens because Render uses a very new Python (e.g. 3.14) and old `scikit-learn` has no prebuilt wheels, so pip tries to compile from source and breaks.
+
+**The main API does not need Python to build.** Schema migrations run automatically on boot (`initSchema()` in `server.js`).
+
+### Optional ML premium predictor (Python)
+
+Only if you need `/api/tools/predict-premium`:
+
+| Field | Value |
+|-------|--------|
+| **Start Command** | `bash start.sh` |
+
+`start.sh` starts the Flask sidecar at runtime (best-effort). If pip fails, **the Node API still runs**.
+
+ML is optional for the hackathon demo — chat, game survey, and policy tools work without it.
 
 ## Required environment variables
 
@@ -45,8 +68,61 @@ The codebase also forces IPv4 DNS for `*.supabase.co` hosts when using the direc
 
 ## After first successful deploy
 
-Render Shell: `npm run seed`
+Render Shell (Root Directory = `backend`):
+
+```bash
+npm run seed
+```
+
+Run once for demo agents/customers. Safe to re-run but it resets demo data.
 
 ## Health check
 
 `https://YOUR-SERVICE.onrender.com/api/health`
+
+## Virtual call + chat (production)
+
+### Vercel (frontend) — required env vars
+
+Redeploy after saving (Vite bakes env vars at **build** time):
+
+```
+VITE_API_URL=https://YOUR-SERVICE.onrender.com/api
+VITE_SOCKET_URL=https://YOUR-SERVICE.onrender.com
+```
+
+Without these, the browser tries to call the Vercel hostname on port 4000 — sockets and API will fail.
+
+### Render (backend) — required env vars
+
+```
+CLIENT_ORIGIN=https://your-app.vercel.app
+OPENAI_API_KEY=sk-...   # required for Whisper transcription on virtual calls
+```
+
+`CLIENT_ORIGIN` can be a comma-separated list. `*.vercel.app` preview URLs are also allowed automatically.
+
+### Why video only worked on the same WiFi
+
+WebRTC video is **peer-to-peer**. The app uses Socket.io on Render only to **signal** (offer/answer). Actual camera/audio needs either:
+
+- **Same WiFi / LAN** — often works with STUN only (local demo), or
+- **Different networks** — needs **TURN** to relay media.
+
+The frontend now adds a public demo TURN server when not on localhost/LAN. For a serious deployment, use your own TURN service via `VITE_ICE_SERVERS`.
+
+### Transcription not working
+
+Virtual call speech goes: mic → `POST /api/guidance/transcribe` (Whisper) → text → guidance.
+
+| Symptom | Fix |
+|--------|-----|
+| Always fails | Set `OPENAI_API_KEY` on Render and redeploy |
+| Works locally, not on Vercel | Set `VITE_API_URL` on Vercel and **redeploy frontend** |
+| Browser fallback only | Whisper unavailable — key missing or `/guidance/transcribe/status` returns `whisper: false` |
+
+Test: open `https://YOUR-SERVICE.onrender.com/api/guidance/transcribe/status` — should return `{"whisper":true}` when the key is set.
+
+### Text chat (no video)
+
+Uses the same `VITE_SOCKET_URL`. If chat works but video does not, the issue is WebRTC/TURN, not the backend.

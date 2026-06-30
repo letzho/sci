@@ -12,6 +12,7 @@ start_ml() {
   command -v python3 >/dev/null 2>&1 || PY=python
   PIP=pip3
   command -v pip3 >/dev/null 2>&1 || PIP=pip
+  $PIP install --upgrade pip setuptools wheel --quiet 2>/dev/null || true
   $PIP install -r ml/requirements.txt --quiet 2>/dev/null || echo "[start] pip install failed — ML disabled"
   ML_HOST=127.0.0.1 ML_PORT=5001 $PY ml/app.py &
   echo "[start] ML sidecar starting on 127.0.0.1:5001"

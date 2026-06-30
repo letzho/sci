@@ -1,6 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+/** STUN helps peers find each other; TURN relays media when NAT blocks direct connection (different WiFi/networks). */
+const STUN_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+/** Public demo TURN — enables video across different networks (not just same WiFi). */
+const DEMO_TURN_SERVERS = [
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayprojectsecret',
+  },
+];
+
+function resolveIceServers() {
+  const raw = import.meta.env.VITE_ICE_SERVERS;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch {
+      console.warn('[useWebRTC] Invalid VITE_ICE_SERVERS JSON — using defaults');
+    }
+  }
+  const isLocal =
+    typeof window === 'undefined' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    /^192\.168\./.test(window.location.hostname) ||
+    /^10\./.test(window.location.hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(window.location.hostname);
+  if (isLocal) return STUN_SERVERS;
+  return [...STUN_SERVERS, ...DEMO_TURN_SERVERS];
+}
+
+const ICE_SERVERS = resolveIceServers();
 
 /**
  * Minimal two-peer WebRTC helper for a real, live video call between the
