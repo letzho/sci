@@ -79,7 +79,8 @@ start_ml() {
     echo "[start] ML dependencies already installed"
   fi
 
-  "$PY" ml/app.py &
+  # Unset PORT so Flask does not steal Render's web port (Node needs PORT).
+  env -u PORT ML_HOST="$ML_HOST" ML_PORT="$ML_PORT" "$PY" ml/app.py &
   echo "[start] ML sidecar starting on ${ML_HOST}:${ML_PORT} (pid $!)"
   wait_for_ml || true
 }
