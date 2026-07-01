@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
+    "start:render": "bash start.sh",
     "dev": "nodemon server.js",
     "seed": "node src/db/seed.js",
     "ml": "python ml/app.py"

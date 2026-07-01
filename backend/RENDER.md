@@ -7,7 +7,9 @@
 | **Environment** | Node (not Python) |
 | **Root Directory** | `backend` |
 | **Build Command** | `npm install` — or `bash render-build.sh` |
-| **Start Command** | `node server.js` |
+| **Start Command** | `bash start.sh` — **required** for premium ML predictor |
+
+> **If Start Command is `node server.js`**, the API runs but the ML sidecar never starts — the UI will show "ML service offline".
 
 ### Do NOT put Python in the build command
 
@@ -29,9 +31,39 @@ Only if you need `/api/tools/predict-premium`:
 |-------|--------|
 | **Start Command** | `bash start.sh` |
 
-`start.sh` starts the Flask sidecar at runtime (best-effort). If pip fails, **the Node API still runs**.
+`start.sh` installs Flask/sklearn at **runtime** (best-effort) and starts the sidecar on `127.0.0.1:5001`. If pip fails, **the Node API still runs** — check deploy logs for `[start] pip install failed`.
+
+**Recommended if native Node runtime has no Python or pip fails:** switch the service to **Docker**, set Root Directory to `backend`, leave Dockerfile path as `Dockerfile`. The image bundles Node 20 + Python 3.11 and pre-installs ML deps at build time.
 
 ML is optional for the hackathon demo — chat, game survey, and policy tools work without it.
+
+### ML still offline with `bash start.sh`?
+
+**Do not rely on Render Shell `pip install`** — it only affects the current instance and does not survive redeploys or restarts. `start.sh` already runs pip on every boot.
+
+1. Open **Logs** on Render and search for `[start]`. Common messages:
+   - `Python not found` → Node runtime has no Python. **Switch to Docker** (below).
+   - `pip install failed` → Python version incompatible (often 3.14 on Node). **Switch to Docker**.
+   - `ML health: Missing model files` → `.pkl` files not deployed; ensure they are committed in `backend/ml/models/`.
+
+2. **Render Shell** (Root Directory = `backend`) — run once to see the exact error:
+   ```bash
+   bash scripts/ml-diagnose.sh
+   ```
+
+3. **Recommended fix — Docker deploy** (Node + Python in one image):
+
+   | Field | Value |
+   |-------|--------|
+   | **Environment** | Docker |
+   | **Root Directory** | `backend` |
+   | **Dockerfile Path** | `Dockerfile` |
+   | **Start Command** | *(leave empty — Dockerfile CMD runs `bash start.sh`)* |
+   | **Build Command** | *(leave empty)* |
+
+   Redeploy. Logs should show `[start] ML dependencies already installed` and `[start] ML sidecar ready`.
+
+4. Verify: `GET /api/tools/premium-predictor/status` → `{"available":true,"ok":true}`.
 
 ## Required environment variables
 

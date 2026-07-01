@@ -86,7 +86,8 @@ def predict():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("ML_PORT", 5001))
+    # PORT is set by Render for a standalone Python Web Service; ML_PORT for local sidecar.
+    port = int(os.environ.get("PORT") or os.environ.get("ML_PORT", 5001))
     host = os.environ.get("ML_HOST", "127.0.0.1")
     print(f"[ml] Premium predictor listening on http://{host}:{port}")
     if load_error:
