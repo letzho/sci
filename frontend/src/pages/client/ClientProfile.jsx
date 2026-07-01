@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HeartPulse, Sparkles, User } from 'lucide-react';
+import { ArrowLeft, CalendarDays, HeartPulse, Sparkles, User } from 'lucide-react';
+import { CHANNEL_LABELS, formatAppointmentWhen } from '../../utils/appointmentUtils.js';
 import api from '../../api/client';
 import PhoneFrame from '../../components/PhoneFrame.jsx';
 import PortfolioPieChart from '../../components/PortfolioPieChart.jsx';
@@ -19,6 +20,7 @@ export default function ClientProfile() {
   const [disclaimer, setDisclaimer] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingRecs, setLoadingRecs] = useState(false);
+  const [appointments, setAppointments] = useState([]);
 
   useEffect(() => {
     if (!customerId) {
@@ -33,6 +35,16 @@ export default function ClientProfile() {
       })
       .catch(() => navigate('/client'))
       .finally(() => setLoading(false));
+
+    api
+      .get('/appointments', { params: { customerId } })
+      .then((res) => {
+        const upcoming = (res.data.appointments || []).filter(
+          (a) => a.status === 'scheduled' && new Date(a.scheduledAt) >= new Date()
+        );
+        setAppointments(upcoming);
+      })
+      .catch(() => setAppointments([]));
   }, [customerId, navigate]);
 
   async function loadRecommendations() {
@@ -93,6 +105,26 @@ export default function ClientProfile() {
             </div>
           </Card>
         </div>
+
+        {appointments.length > 0 && (
+          <Card className="p-4 mb-4 border-brand-100 bg-brand-50/40">
+            <div className="flex items-center gap-2 mb-2">
+              <CalendarDays size={14} className="text-brand-600" />
+              <h2 className="text-sm font-semibold text-slate-700">Upcoming with your rep</h2>
+            </div>
+            <div className="space-y-2">
+              {appointments.slice(0, 5).map((a) => (
+                <div key={a.id} className="rounded-xl bg-white border border-slate-100 px-3 py-2">
+                  <div className="text-xs font-semibold text-slate-800">{formatAppointmentWhen(a.scheduledAt)}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {a.title} · {CHANNEL_LABELS[a.channel] || a.channel}
+                  </div>
+                  {a.notes && <p className="text-[10px] text-slate-400 mt-1">{a.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <Card className="p-4 mb-4">
           <h2 className="text-sm font-semibold text-slate-700 mb-3">Portfolio mix</h2>

@@ -21,11 +21,13 @@ async function clearAll() {
   // cleared explicitly here too - otherwise re-seeding after using the
   // Knowledge Library / policy upload features throws FOREIGN KEY constraint
   // failed on `DELETE FROM agents` / `DELETE FROM conversations`.
-  await db.exec(`
+    await db.exec(`
     DELETE FROM guidance_events;
     DELETE FROM messages;
     DELETE FROM policy_uploads;
     DELETE FROM financial_plans;
+    DELETE FROM appointments;
+    DELETE FROM agent_blocked_dates;
     DELETE FROM conversations;
     DELETE FROM learned_chunks;
     DELETE FROM learned_documents;

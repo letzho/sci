@@ -8,6 +8,7 @@ import FlightSimulatorModal from '../../components/FlightSimulatorModal.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import BadgeGallery from '../../components/BadgeGallery.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
+import AppointmentCalendar from '../../components/AppointmentCalendar.jsx';
 import styles from './Dashboard.module.css';
 
 const CHANNEL_ROUTE = { face_to_face: 'face-to-face', virtual_call: 'virtual-call', chat: 'chat' };
@@ -164,46 +165,50 @@ export default function Dashboard() {
       )}
 
       <Card className="p-4 border-brand-100 bg-brand-50/30">
-        <div className="flex items-center gap-2 mb-2">
-          <Coffee size={16} className="text-brand-600" />
-          <h2 className="text-sm font-semibold text-slate-700">First meet-up & prospect outreach</h2>
-        </div>
-        <p className="text-xs text-slate-500 mb-3">
-          Start a virtual call with a warm invite, icebreakers, and a 2-question quiz — ideal for coffee chats or first-time prospects.
-        </p>
-        <div className="grid sm:grid-cols-2 gap-2 mb-3">
-          {meetingTemplates.slice(0, 4).map((t) => (
-            <div key={t.id} className="rounded-xl bg-white border border-slate-100 px-3 py-2 text-[11px]">
-              <span className="mr-1">{t.icon}</span>
-              <span className="font-medium text-slate-700">{t.label}</span>
-              <p className="text-slate-400 mt-0.5 line-clamp-1">{t.subject}</p>
+        <div className="grid lg:grid-cols-[1fr_280px] gap-4 items-start">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Coffee size={16} className="text-brand-600" />
+              <h2 className="text-sm font-semibold text-slate-700">First meet-up & prospect outreach</h2>
             </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {customers.slice(0, 2).map((customer) => (
-            <div key={customer.id} className="flex flex-wrap gap-1.5">
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => setSimulatorCustomer(customer)}
-              >
-                <Plane size={14} /> Practice with {customer.name.split(' ')[0]}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={startingKey === `${customer.id}-virtual_call`}
-                onClick={() => startSession(customer, 'virtual_call')}
-              >
-                <Video size={14} /> Go live
-              </Button>
+            <p className="text-xs text-slate-500 mb-3">
+              Start a virtual call with a warm invite, icebreakers, and a 2-question quiz — ideal for coffee chats or first-time prospects.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2 mb-3">
+              {meetingTemplates.slice(0, 4).map((t) => (
+                <div key={t.id} className="rounded-xl bg-white border border-slate-100 px-3 py-2 text-[11px]">
+                  <span className="mr-1">{t.icon}</span>
+                  <span className="font-medium text-slate-700">{t.label}</span>
+                  <p className="text-slate-400 mt-0.5 line-clamp-1">{t.subject}</p>
+                </div>
+              ))}
             </div>
-          ))}
+            <div className="flex flex-wrap gap-2">
+              {customers.slice(0, 2).map((customer) => (
+                <div key={customer.id} className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="primary" onClick={() => setSimulatorCustomer(customer)}>
+                    <Plane size={14} /> Practice with {customer.name.split(' ')[0]}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={startingKey === `${customer.id}-virtual_call`}
+                    onClick={() => startSession(customer, 'virtual_call')}
+                  >
+                    <Video size={14} /> Go live
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">
+              <strong>Practice</strong> opens the Flight Simulator (3-turn roleplay + XP). <strong>Go live</strong> starts the real virtual call.
+            </p>
+          </div>
+
+          {agent && (
+            <AppointmentCalendar agentId={agent.id} customers={customers} onRefresh={load} />
+          )}
         </div>
-        <p className="text-[10px] text-slate-400 mt-2">
-          <strong>Practice</strong> opens the Flight Simulator (3-turn roleplay + XP). <strong>Go live</strong> starts the real virtual call.
-        </p>
       </Card>
 
       <div>

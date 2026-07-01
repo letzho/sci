@@ -293,6 +293,7 @@ export default function VirtualCall() {
           productType={conversation?.productContext}
           customerName={customer?.name}
           customerId={customer?.id || conversation?.customerId}
+          agentId={agent?.id}
           agentName={agent?.name}
           socket={socket}
           history={history}

@@ -208,6 +208,32 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_policy_chunks_upload ON policy_upload_chunks(upload_id);
   `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS appointments (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      scheduled_at TEXT NOT NULL,
+      channel TEXT DEFAULT 'virtual_call' CHECK (channel IN ('face_to_face','virtual_call','chat')),
+      title TEXT,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','completed','cancelled')),
+      created_at TEXT NOT NULL DEFAULT (${db.NOW_EXPR})
+    );
+    CREATE INDEX IF NOT EXISTS idx_appointments_agent ON appointments(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_appointments_customer ON appointments(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_appointments_scheduled ON appointments(scheduled_at);
+
+    CREATE TABLE IF NOT EXISTS agent_blocked_dates (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      block_date TEXT NOT NULL,
+      reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (${db.NOW_EXPR})
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_agent_date ON agent_blocked_dates(agent_id, block_date);
+  `);
 }
 
 module.exports = { initSchema };

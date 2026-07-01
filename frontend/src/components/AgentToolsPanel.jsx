@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BookOpenCheck, Calculator, Coffee, GitCompare, DollarSign, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Gamepad2 } from 'lucide-react';
+import { BookOpenCheck, Calculator, Coffee, GitCompare, DollarSign, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Gamepad2, CalendarDays } from 'lucide-react';
 import CustomerPlanPanel from './CustomerPlanPanel.jsx';
 import GameSurveyPanel from './gameSurvey/GameSurveyPanel.jsx';
+import AppointmentScheduler from './AppointmentScheduler.jsx';
 import api from '../api/client';
 import FinancialCalculator from './FinancialCalculator.jsx';
 import PremiumPredictor from './PremiumPredictor.jsx';
@@ -24,6 +25,7 @@ const TABS = [
   { key: 'gameSurvey', label: 'Game', icon: Gamepad2 },
   { key: 'plan', label: 'Plan', icon: ClipboardList },
   { key: 'meet', label: 'Meet', icon: Coffee },
+  { key: 'schedule', label: 'Schedule', icon: CalendarDays },
 ];
 
 export default function AgentToolsPanel({
@@ -31,6 +33,7 @@ export default function AgentToolsPanel({
   productType,
   customerName,
   customerId,
+  agentId,
   agentName,
   socket,
   history,
@@ -221,6 +224,28 @@ export default function AgentToolsPanel({
               Sent "{selectedTemplate.label}" to {customerName || 'client'}.
               {selectedTemplate.suggestQuiz && ' Quiz was also shared.'}
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'schedule' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <CalendarDays size={14} className="text-brand-600" />
+            <h3 className="text-sm font-semibold text-slate-700">Book or block date</h3>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Schedule a follow-up with {customerName || 'this client'} or block a day you are unavailable. Shows on their profile and your dashboard calendar.
+          </p>
+          {agentId ? (
+            <AppointmentScheduler
+              agentId={agentId}
+              customerId={customerId}
+              customerName={customerName}
+              compact
+            />
+          ) : (
+            <p className="text-[11px] text-rose-600">Sign in again to schedule appointments.</p>
           )}
         </div>
       )}

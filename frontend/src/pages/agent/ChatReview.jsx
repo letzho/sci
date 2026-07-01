@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, FileSearch, FileText, MessageSquareText, PhoneOff, Send, Sparkles, User } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, FileSearch, FileText, MessageSquareText, PhoneOff, Send, Sparkles, User } from 'lucide-react';
+import AppointmentScheduler from '../../components/AppointmentScheduler.jsx';
 import api from '../../api/client';
 import { getSocket } from '../../socket.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -342,6 +343,23 @@ export default function ChatReview() {
             </p>
           </Card>
         )}
+
+        <Card className={`p-4 ${styles.sideNote}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <CalendarDays size={15} className="text-brand-600" />
+            <h2 className="text-sm font-semibold text-slate-700">Schedule follow-up</h2>
+          </div>
+          {agent?.id && customer?.id ? (
+            <AppointmentScheduler
+              agentId={agent.id}
+              customerId={customer.id}
+              customerName={customer.name}
+              compact
+            />
+          ) : (
+            <p className="text-[11px] text-slate-400">Loading…</p>
+          )}
+        </Card>
 
         <Card className={`p-4 ${styles.sideNote}`}>
           <GameSurveyPanel

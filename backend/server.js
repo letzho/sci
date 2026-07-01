@@ -20,6 +20,7 @@ const documentsRoutes = require('./src/routes/documents.routes');
 const policyUploadsRoutes = require('./src/routes/policyUploads.routes');
 const metricsRoutes = require('./src/routes/metrics.routes');
 const toolsRoutes = require('./src/routes/tools.routes');
+const appointmentsRoutes = require('./src/routes/appointments.routes');
 
 const PORT = process.env.PORT || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -78,6 +79,7 @@ app.use('/api/documents', documentsRoutes);
 app.use('/api/policy-uploads', policyUploadsRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/tools', toolsRoutes);
+app.use('/api/appointments', appointmentsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
