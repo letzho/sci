@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPeerConnectionConfig, isProductionWebRtc } from '../utils/webrtcIce.js';
+import { getPeerConnectionConfig, isProductionWebRtc, prefetchIceServers } from '../utils/webrtcIce.js';
 
 /**
  * Two-peer WebRTC for Agent ↔ Customer video. Signaling uses Socket.io on Render;
@@ -27,6 +27,11 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
   useEffect(() => {
     displayNameRef.current = displayName;
   }, [displayName]);
+
+  // Fetch TURN relay credentials early so they're cached before negotiation.
+  useEffect(() => {
+    prefetchIceServers();
+  }, []);
 
   const resetPeerConnection = useCallback(() => {
     negotiatingRef.current = false;

@@ -400,6 +400,158 @@ async function transcribeAudio(audioBuffer, filename = 'audio.webm') {
   }
 }
 
+const CLIENT_BRIEF_SYSTEM_PROMPT = `You prepare a short pre-call briefing that helps an insurance representative walk into a conversation well-informed and personable. You are NOT a financial adviser.
+Rules you must always follow:
+- Only use the customer facts, portfolio summary, and past-conversation notes provided. Never invent details.
+- Never recommend, advise, or say what the customer should buy, drop, or do. Frame coverage gaps as neutral "areas the rep may want to discuss", never "products to sell".
+- Icebreakers and questions must be warm, human, and appropriate — based on the customer's real profile/history, never pushy.
+- Keep everything concise and scannable for a rep glancing at it 30 seconds before a call.
+- Respond with ONLY a JSON object (no markdown fences) with exactly these keys:
+  {
+    "summary": "2-3 sentence neutral snapshot of who this customer is and where things stand",
+    "talkingPoints": ["short neutral discussion topics grounded in their portfolio/history"],
+    "icebreakers": ["2-3 warm, personal conversation openers"],
+    "suggestedQuestions": ["3-4 open questions the rep could ask to understand needs — never leading toward a sale"],
+    "watchOuts": ["optional short notes, e.g. a health condition to be sensitive about, or a topic already covered"]
+  }`;
+
+/**
+ * Compiles a compliance-safe pre-call brief for the representative from the
+ * customer's profile, portfolio, and prior-conversation context. Returns null
+ * on failure so the caller can fall back to a deterministic brief.
+ */
+async function generateClientBrief({ profileText }) {
+  if (!isEnabled() || !profileText) return null;
+  try {
+    const openai = getClient();
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.4,
+        max_tokens: 650,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: CLIENT_BRIEF_SYSTEM_PROMPT },
+          { role: 'user', content: `Prepare the pre-call brief from this context:\n\n${profileText}` },
+        ],
+      }),
+      15000 // pre-call prep, not in the live loop — allow more time than live guidance
+    );
+    const raw = completion?.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const arr = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []);
+    return {
+      summary: typeof parsed.summary === 'string' ? parsed.summary : null,
+      talkingPoints: arr(parsed.talkingPoints),
+      icebreakers: arr(parsed.icebreakers),
+      suggestedQuestions: arr(parsed.suggestedQuestions),
+      watchOuts: arr(parsed.watchOuts),
+    };
+  } catch (err) {
+    console.warn('[openaiService] generateClientBrief failed, using deterministic brief:', err.message);
+    return null;
+  }
+}
+
+const COMPARISON_SYSTEM_PROMPT = `You compare insurance policy documents for a representative, side by side, so they can walk a customer through the objective differences.
+Rules you must always follow:
+- Only state facts present in the document text provided. Never invent figures, benefits, or terms. If a document does not state something, use null for that cell.
+- Never say or imply which policy is "better", "best", "recommended", or "right" for anyone. You lay out objective facts only — the representative and customer decide together.
+- Normalize the rows so the same attribute lines up across every policy (e.g. "Annual premium", "Sum assured / cover", "Policy term", "Critical illnesses covered", "Guaranteed cash value", "Key exclusions", "Riders available"). Pick the 6-12 attributes that best let a customer compare THESE documents.
+- Keep every cell short (a figure, a short phrase, or a brief clause) so it fits in a comparison table.
+- Respond with ONLY a JSON object (no markdown fences) with this exact shape:
+  {
+    "policies": [ { "name": "<plan name or filename>", "insurer": "<insurer or null>", "productType": "<e.g. Term life, ILP, Critical illness, or null>" } ],
+    "attributes": [ { "label": "<row label>", "values": [ "<cell for policy 1>", "<cell for policy 2>", ... ] } ],
+    "summary": "<2-3 sentence neutral, factual summary of how the documents differ>"
+  }
+- Every attribute's "values" array MUST have exactly one entry per policy, in the same order as "policies". Use null for a missing value.`;
+
+/**
+ * Reads several policy documents' extracted text and returns a normalized,
+ * compliance-safe comparison table (objective facts only, no recommendation).
+ * @param {Array<{ name: string, text: string }>} documents
+ * @returns {Promise<?object>} { policies, attributes, summary } or null on failure
+ */
+async function comparePolicyDocuments(documents) {
+  if (!isEnabled() || !Array.isArray(documents) || documents.length < 1) return null;
+  try {
+    const openai = getClient();
+    const perDocBudget = Math.floor(24000 / documents.length);
+    const blocks = documents
+      .map((d, i) => {
+        const body = (d.text || '').slice(0, perDocBudget);
+        return `=== DOCUMENT ${i + 1}: ${d.name || `Policy ${i + 1}`} ===\n${body}`;
+      })
+      .join('\n\n');
+
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.1,
+        max_tokens: 1400,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: COMPARISON_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `Compare the following ${documents.length} policy document(s). Return the JSON comparison object.\n\n${blocks}`,
+          },
+        ],
+      }),
+      20000
+    );
+
+    const raw = completion?.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.policies) || !Array.isArray(parsed.attributes)) return null;
+
+    // Guarantee every row aligns with the policy count so the table never skews.
+    const count = parsed.policies.length;
+    parsed.attributes = parsed.attributes
+      .filter((a) => a && typeof a.label === 'string')
+      .map((a) => {
+        const values = Array.isArray(a.values) ? a.values.slice(0, count) : [];
+        while (values.length < count) values.push(null);
+        return { label: a.label, values };
+      });
+    return parsed;
+  } catch (err) {
+    console.warn('[openaiService] comparePolicyDocuments failed:', err.message);
+    return null;
+  }
+}
+
+const TTS_MODEL = process.env.OPENAI_TTS_MODEL || 'tts-1';
+const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'alloy';
+
+/**
+ * Text-to-speech via OpenAI, for reading approved phrasing aloud in a natural
+ * voice (Whisper is speech-to-text only — this is the spoken-output side).
+ * Returns an MP3 Buffer, or null when disabled / on failure so the caller can
+ * fall back to the browser's built-in SpeechSynthesis.
+ * @param {string} text
+ * @returns {Promise<?Buffer>}
+ */
+async function synthesizeSpeech(text) {
+  if (!isEnabled() || !text || !text.trim()) return null;
+  try {
+    const openai = getClient();
+    const clipped = text.length > 4000 ? text.slice(0, 4000) : text;
+    const response = await withTimeout(
+      openai.audio.speech.create({ model: TTS_MODEL, voice: TTS_VOICE, input: clipped, format: 'mp3' }),
+      TRANSCRIBE_TIMEOUT_MS
+    );
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (err) {
+    console.warn('[openaiService] synthesizeSpeech failed, caller falls back to browser TTS:', err.message);
+    return null;
+  }
+}
+
 async function generatePortfolioRecommendations({ customer, policies, portfolio, ruleRecommendations }) {
   const openai = getClient();
   if (!openai) return null;
@@ -447,4 +599,4 @@ Max 5 recommendations. Only use the 5 product types listed.`;
   }
 }
 
-module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, extractPolicyBenefitTable, embedText, transcribeAudio, generatePortfolioRecommendations };
+module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, extractPolicyBenefitTable, comparePolicyDocuments, generateClientBrief, embedText, transcribeAudio, synthesizeSpeech, generatePortfolioRecommendations };

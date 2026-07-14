@@ -42,19 +42,39 @@ async function findTalkingPoints({ text, productType, limit = DEFAULT_LIMIT, pre
   const learnedLimit = comparisonMode || preferLearned ? limit : Math.max(limit, 4);
   const approvedCap = comparisonMode ? 1 : preferLearned ? Math.min(2, limit) : limit;
 
-  let learned = await vectorStore.semanticSearch({
+  // Thresholds tuned for text-embedding-3-small, whose relevant cosine scores
+  // typically fall in ~0.35-0.55 — the old 0.65 floor silently dropped good
+  // chunks and (returning [] not null) also skipped the keyword fallback.
+  const semanticMin = comparisonMode ? 0.32 : 0.4;
+
+  // Semantic search over-fetches so the hybrid merge below has candidates to rank.
+  const semantic = await vectorStore.semanticSearch({
     text: searchText,
     productType: searchProductType,
-    limit: learnedLimit,
-    minSimilarity: comparisonMode ? 0.58 : 0.65,
+    limit: learnedLimit + 3,
+    minSimilarity: semanticMin,
     comparisonMode,
   });
-  let learnedVia = 'semantic';
-  if (learned === null) {
+
+  let learned;
+  let learnedVia;
+  if (semantic === null) {
+    // Embeddings unavailable (no API key) — deterministic keyword matching only.
     learned = await ruleEngine.findLearnedTalkingPoints(searchText, searchProductType, learnedLimit, {
       comparisonMode,
     });
     learnedVia = 'keyword';
+  } else {
+    // Hybrid recall: keep semantic hits first (ranked by cosine), then backfill
+    // with keyword-only matches the embedding missed. Chunks found by both are
+    // already covered by the semantic entry, so we just skip the duplicate.
+    const keyword = await ruleEngine.findLearnedTalkingPoints(searchText, searchProductType, learnedLimit + 3, {
+      comparisonMode,
+    });
+    const semanticIds = new Set(semantic.map((s) => s.id));
+    const keywordExtras = keyword.filter((k) => !semanticIds.has(k.id));
+    learned = [...semantic, ...keywordExtras].slice(0, learnedLimit);
+    learnedVia = keywordExtras.length ? 'hybrid' : 'semantic';
   }
 
   let approved = await ruleEngine.findTalkingPoints(text, searchProductType || productType, approvedCap);

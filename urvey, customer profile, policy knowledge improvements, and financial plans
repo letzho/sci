@@ -1,0 +1,71 @@
+warning: in the working copy of 'backend/.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/ml/app.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/ml/requirements.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/server.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/agents/draftingAgent.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/agents/interpreterAgent.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/agents/knowledgeAgent.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/agents/orchestrator.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/db/init.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/db/repo.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/db/seed.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/routes/customers.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/routes/guidance.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/routes/policyUploads.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/routes/tools.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/services/documentService.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/services/openaiService.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/services/policyContext.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/services/policyTierExtractor.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/services/ruleEngine.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/services/vectorStore.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/sockets/index.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/start.sh', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/App.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/components/AgentToolsPanel.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/components/FinancialCalculator.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/agent/ChatReview.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/agent/Dashboard.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/agent/FaceToFace.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/agent/VirtualCall.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/client/ClientCall.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/client/ClientChat.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/pages/client/ClientHome.jsx', LF will be replaced by CRLF the next time Git touches it
+ backend/.env.example                            |   1 [32m+[m
+ backend/ml/app.py                               |   2 [32m+[m[31m-[m
+ backend/ml/requirements.txt                     |   4 [32m+[m[31m-[m
+ backend/server.js                               |   2 [32m+[m
+ backend/src/agents/draftingAgent.js             | 102 [32m+++++++++[m[31m-[m
+ backend/src/agents/interpreterAgent.js          |  91 [32m++++[m[31m-----[m
+ backend/src/agents/knowledgeAgent.js            |  85 [32m+++++[m[31m---[m
+ backend/src/agents/orchestrator.js              |  73 [32m++++[m[31m---[m
+ backend/src/db/init.js                          |  26 [32m+++[m
+ backend/src/db/repo.js                          |  24 [32m++[m[31m-[m
+ backend/src/db/seed.js                          |   8 [32m+[m[31m-[m
+ backend/src/routes/customers.routes.js          |  28 [32m+++[m
+ backend/src/routes/guidance.routes.js           |  37 [32m+++[m[31m-[m
+ backend/src/routes/policyUploads.routes.js      |  25 [32m++[m[31m-[m
+ backend/src/routes/tools.routes.js              |   6 [32m+[m
+ backend/src/services/documentService.js         |  11 [32m+[m[31m-[m
+ backend/src/services/openaiService.js           | 198 [32m++++++++++++++++++[m[31m-[m
+ backend/src/services/policyContext.js           | 165 [32m++++++++++++++[m[31m--[m
+ backend/src/services/policyTierExtractor.js     | 134 [32m+++++++++++[m[31m--[m
+ backend/src/services/ruleEngine.js              |  85 [32m++++[m[31m----[m
+ backend/src/services/vectorStore.js             |  31 [32m+[m[31m--[m
+ backend/src/sockets/index.js                    |  42 [32m++++[m
+ backend/start.sh                                |  25 [32m++[m[31m-[m
+ frontend/package-lock.json                      | 246 [32m++++++++++++++++++++++++[m
+ frontend/package.json                           |   2 [32m+[m
+ frontend/src/App.jsx                            |   4 [32m+[m
+ frontend/src/components/AgentToolsPanel.jsx     |  20 [32m+[m[31m-[m
+ frontend/src/components/FinancialCalculator.jsx |   4 [32m+[m[31m-[m
+ frontend/src/pages/agent/ChatReview.jsx         | 113 [32m+++++++++[m[31m--[m
+ frontend/src/pages/agent/Dashboard.jsx          |  10 [32m+[m[31m-[m
+ frontend/src/pages/agent/FaceToFace.jsx         |   6 [32m+[m[31m-[m
+ frontend/src/pages/agent/VirtualCall.jsx        |  10 [32m+[m[31m-[m
+ frontend/src/pages/client/ClientCall.jsx        |  39 [32m+++[m[31m-[m
+ frontend/src/pages/client/ClientChat.jsx        |  36 [32m+++[m[31m-[m
+ frontend/src/pages/client/ClientHome.jsx        |  11 [32m+[m[31m-[m
+ 35 files changed, 1460 insertions(+), 246 deletions(-)

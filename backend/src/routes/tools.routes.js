@@ -14,6 +14,38 @@ const { predictPremium, checkMlHealth } = require('../services/premiumPredictor'
 
 const router = express.Router();
 
+/**
+ * WebRTC TURN credentials for cross-network video. The Metered secret key
+ * stays here on the server (never shipped to the browser bundle); the frontend
+ * just asks this endpoint for a ready-to-use iceServers array. Cached briefly
+ * to avoid calling Metered on every page load.
+ */
+let iceCache = { at: 0, servers: null };
+const ICE_CACHE_MS = 5 * 60 * 1000;
+
+router.get('/ice-servers', async (req, res) => {
+  const domain = process.env.METERED_DOMAIN;
+  const apiKey = process.env.METERED_API_KEY;
+  if (!domain || !apiKey) return res.json({ iceServers: null });
+
+  if (iceCache.servers && Date.now() - iceCache.at < ICE_CACHE_MS) {
+    return res.json({ iceServers: iceCache.servers });
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const r = await fetch(`https://${host}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`);
+    if (!r.ok) throw new Error(`Metered HTTP ${r.status}`);
+    const servers = await r.json();
+    const valid = Array.isArray(servers) && servers.length ? servers : null;
+    iceCache = { at: Date.now(), servers: valid };
+    res.json({ iceServers: valid });
+  } catch (err) {
+    console.warn('[tools] ice-servers fetch failed:', err.message);
+    res.json({ iceServers: null });
+  }
+});
+
 const PREMIUM_DISCLAIMER =
   'Illustrative ML estimate only — not financial advice, not underwriting, and not a binding premium quote.';
 

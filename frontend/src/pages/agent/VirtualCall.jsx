@@ -6,6 +6,7 @@ import { getSocket } from '../../socket.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useWebRTC } from '../../hooks/useWebRTC.js';
 import { useWhisperRecognition } from '../../hooks/useWhisperRecognition.js';
+import { useSentenceBuffer } from '../../hooks/useSentenceBuffer.js';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import AgentToolsPanel from '../../components/AgentToolsPanel.jsx';
 import ObjectionBusterPanel from '../../components/ObjectionBusterPanel.jsx';
@@ -138,8 +139,12 @@ export default function VirtualCall() {
     }
   }
 
+  // Buffer the rep's own mic into full sentences before the compliance self-check,
+  // so a half-spoken phrase doesn't trigger a premature flag.
+  const { push: pushAgentFragment } = useSentenceBuffer(handleAgentFinal);
+
   const { isListening, isSupported, start: startListening, stop: stopListening, ready } = useWhisperRecognition({
-    onFinalResult: handleAgentFinal,
+    onFinalResult: pushAgentFragment,
     mediaStream: localStream,
   });
 

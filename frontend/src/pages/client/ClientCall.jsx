@@ -5,6 +5,7 @@ import api from '../../api/client';
 import { getSocket } from '../../socket.js';
 import { useWebRTC } from '../../hooks/useWebRTC.js';
 import { useWhisperRecognition } from '../../hooks/useWhisperRecognition.js';
+import { useSentenceBuffer } from '../../hooks/useSentenceBuffer.js';
 import ClientQuizOverlay from '../../components/ClientQuizOverlay.jsx';
 import GameSurveyOverlay from '../../components/gameSurvey/GameSurveyOverlay.jsx';
 import ClientCoffeeChatOverlay from '../../components/ClientCoffeeChatOverlay.jsx';
@@ -129,10 +130,13 @@ export default function ClientCall() {
     socket.once('quiz-result', ({ grade }) => onGraded(grade));
   }
 
-  function handleFinal(text) {
+  // Only emit once a full sentence has formed, so the rep's guidance is driven
+  // by complete thoughts ("what does this critical illness plan cover?") rather
+  // than the first couple of words the customer starts with.
+  function handleSentence(text) {
     const conv = conversationRef.current;
     if (!text?.trim()) return;
-    console.log('[ClientCall] customer-speech:', text.slice(0, 80));
+    console.log('[ClientCall] customer-speech (sentence):', text.slice(0, 80));
     socket.emit('customer-speech', {
       conversationId,
       text,
@@ -140,8 +144,10 @@ export default function ClientCall() {
     });
   }
 
+  const { push: pushFragment } = useSentenceBuffer(handleSentence);
+
   const { start: startListening, stop: stopListening, ready } = useWhisperRecognition({
-    onFinalResult: handleFinal,
+    onFinalResult: pushFragment,
     mediaStream: localStream,
   });
 

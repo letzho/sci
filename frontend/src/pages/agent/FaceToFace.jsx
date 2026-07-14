@@ -4,6 +4,7 @@ import { Mic, MicOff, PhoneOff, User, Volume2 } from 'lucide-react';
 import api from '../../api/client';
 import GuidancePanel from '../../components/GuidancePanel.jsx';
 import { useWhisperRecognition } from '../../hooks/useWhisperRecognition.js';
+import { useSentenceBuffer } from '../../hooks/useSentenceBuffer.js';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import { Badge, Button, Card, LoadingSpinner, ProductSelect, productLabel } from '../../components/ui.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
@@ -58,8 +59,11 @@ export default function FaceToFace() {
     }
   }
 
+  // Group fragments into full sentences before asking for guidance.
+  const { push: pushFragment } = useSentenceBuffer(handleFinalResult);
+
   const { isSupported, isListening, interimText, ready, start, stop } = useWhisperRecognition({
-    onFinalResult: handleFinalResult,
+    onFinalResult: pushFragment,
   });
 
   async function endSession() {

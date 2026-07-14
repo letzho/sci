@@ -24,6 +24,7 @@ const { cleanExtractedText, assessExtractionQuality, filterReadableChunks, build
 const MAX_CHUNK_LEN = 700;
 const MIN_CHUNK_LEN = 40;
 const MAX_CHUNKS_PER_DOC = 80;
+const CHUNK_OVERLAP_CHARS = 160;
 
 function normalizeText(raw) {
   return (raw || '')
@@ -92,7 +93,34 @@ function chunkText(rawText) {
   }
   flush();
 
-  return filterReadableChunks(chunks).slice(0, MAX_CHUNKS_PER_DOC);
+  return addChunkOverlap(filterReadableChunks(chunks).slice(0, MAX_CHUNKS_PER_DOC));
+}
+
+/**
+ * Returns the trailing ~maxChars of a chunk, trimmed to start on a sentence
+ * boundary where possible, for use as overlap context on the next chunk.
+ */
+function chunkTail(text, maxChars) {
+  const trimmed = (text || '').trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  const tail = trimmed.slice(trimmed.length - maxChars);
+  const boundary = tail.search(/[.!?]\s/);
+  return boundary >= 0 ? tail.slice(boundary + 2).trim() : tail.trim();
+}
+
+/**
+ * Prepends a short slice of the previous chunk to each chunk so a fact split
+ * across a boundary (e.g. a benefit named in one chunk, its amount in the
+ * next) still embeds and matches together. `topic` stays derived from the
+ * chunk's own opening sentence, so provenance labels remain accurate.
+ */
+function addChunkOverlap(chunks) {
+  if (chunks.length < 2) return chunks;
+  return chunks.map((chunk, i) => {
+    if (i === 0) return chunk;
+    const overlap = chunkTail(chunks[i - 1].content, CHUNK_OVERLAP_CHARS);
+    return overlap ? { topic: chunk.topic, content: `${overlap} ${chunk.content}` } : chunk;
+  });
 }
 
 /**

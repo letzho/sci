@@ -7,6 +7,7 @@ import api from '../api/client';
 import FinancialCalculator from './FinancialCalculator.jsx';
 import PremiumPredictor from './PremiumPredictor.jsx';
 import InsuranceComparison from './InsuranceComparison.jsx';
+import PolicyComparison from './PolicyComparison.jsx';
 import GuidancePanel from './GuidancePanel.jsx';
 import ObjectionBusterPanel from './ObjectionBusterPanel.jsx';
 import ComplianceGuardTextarea from './ComplianceGuardTextarea.jsx';
@@ -133,7 +134,14 @@ export default function AgentToolsPanel({
 
       {tab === 'premium' && <PremiumPredictor onShare={shareCalculator} />}
 
-      {tab === 'compare' && <InsuranceComparison productType={productType} />}
+      {tab === 'compare' && (
+        <div className="space-y-4">
+          <PolicyComparison />
+          <div className="border-t border-slate-100 pt-3">
+            <InsuranceComparison productType={productType} />
+          </div>
+        </div>
+      )}
 
       {tab === 'quiz' && (
         <div className="space-y-3">

@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import styles from './gameStyles.module.css';
 
 const CELL = 22;
 const CANDY = ['#f472b6', '#60a5fa', '#fbbf24', '#34d399', '#a78bfa'];
+
+/** Polished control-pad button shared by Snake and Tetris. */
+function Pad({ children, accent = false, className = '', ...props }) {
+  return (
+    <button type="button" className={`${styles.control} ${accent ? styles.controlAccent : ''} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
 
 function useGameLoop(callback, paused, active) {
   const cbRef = useRef(callback);
@@ -142,8 +152,8 @@ function randomPopBoard(n, colorCount) {
 function GameCanvas({ children }) {
   return (
     <div className="flex justify-center">
-      <div className="rounded-xl border-2 border-slate-700 bg-slate-900 overflow-hidden inline-flex">
-        {children}
+      <div className={styles.board}>
+        <div className={styles.boardInner}>{children}</div>
       </div>
     </div>
   );
@@ -267,50 +277,47 @@ export function SnakeGame({ paused, active, onMilestone }) {
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
-          {snake.map((s, i) => (
-            <rect key={i} x={s.x * CELL + 1} y={s.y * CELL + 1} width={CELL - 2} height={CELL - 2} rx={4} fill={i === 0 ? '#34d399' : '#10b981'} />
+          <defs>
+            <linearGradient id="snakeBody" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#4ade80" />
+              <stop offset="100%" stopColor="#059669" />
+            </linearGradient>
+            <radialGradient id="snakeFood" cx="35%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#fda4af" />
+              <stop offset="100%" stopColor="#e11d48" />
+            </radialGradient>
+          </defs>
+          {/* faint grid dots */}
+          {Array.from({ length: size + 1 }, (_, i) => (
+            <line key={`gx-${i}`} x1={i * CELL} y1={0} x2={i * CELL} y2={w} stroke="rgba(148,163,184,0.08)" strokeWidth={1} />
           ))}
-          <rect x={food.x * CELL + 2} y={food.y * CELL + 2} width={CELL - 4} height={CELL - 4} rx={6} fill="#f472b6" />
+          {Array.from({ length: size + 1 }, (_, i) => (
+            <line key={`gy-${i}`} x1={0} y1={i * CELL} x2={w} y2={i * CELL} stroke="rgba(148,163,184,0.08)" strokeWidth={1} />
+          ))}
+          {snake.map((s, i) => (
+            <rect
+              key={i}
+              x={s.x * CELL + 1}
+              y={s.y * CELL + 1}
+              width={CELL - 2}
+              height={CELL - 2}
+              rx={i === 0 ? 7 : 5}
+              fill="url(#snakeBody)"
+              opacity={i === 0 ? 1 : Math.max(0.55, 1 - i * 0.03)}
+            />
+          ))}
+          {snake[0] && <circle cx={snake[0].x * CELL + CELL / 2} cy={snake[0].y * CELL + CELL / 2} r={2} fill="#052e16" />}
+          <circle cx={food.x * CELL + CELL / 2} cy={food.y * CELL + CELL / 2} r={(CELL - 4) / 2} fill="url(#snakeFood)">
+            <animate attributeName="r" values={`${(CELL - 6) / 2};${(CELL - 3) / 2};${(CELL - 6) / 2}`} dur="1.1s" repeatCount="indefinite" />
+          </circle>
         </svg>
       </GameCanvas>
-      <div className="flex flex-col items-center gap-1">
-        <button
-          type="button"
-          disabled={paused || !active}
-          onClick={() => turn({ x: 0, y: -1 })}
-          className="h-9 w-9 rounded-lg bg-slate-200 text-slate-700 font-bold text-sm disabled:opacity-40"
-          aria-label="Up"
-        >
-          ↑
-        </button>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={paused || !active}
-            onClick={() => turn({ x: -1, y: 0 })}
-            className="h-9 w-9 rounded-lg bg-slate-200 text-slate-700 font-bold text-sm disabled:opacity-40"
-            aria-label="Left"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            disabled={paused || !active}
-            onClick={() => turn({ x: 0, y: 1 })}
-            className="h-9 w-9 rounded-lg bg-slate-200 text-slate-700 font-bold text-sm disabled:opacity-40"
-            aria-label="Down"
-          >
-            ↓
-          </button>
-          <button
-            type="button"
-            disabled={paused || !active}
-            onClick={() => turn({ x: 1, y: 0 })}
-            className="h-9 w-9 rounded-lg bg-slate-200 text-slate-700 font-bold text-sm disabled:opacity-40"
-            aria-label="Right"
-          >
-            →
-          </button>
+      <div className="flex flex-col items-center gap-1.5">
+        <Pad disabled={paused || !active} onClick={() => turn({ x: 0, y: -1 })} aria-label="Up">↑</Pad>
+        <div className="flex gap-1.5">
+          <Pad disabled={paused || !active} onClick={() => turn({ x: -1, y: 0 })} aria-label="Left">←</Pad>
+          <Pad disabled={paused || !active} onClick={() => turn({ x: 0, y: 1 })} aria-label="Down">↓</Pad>
+          <Pad disabled={paused || !active} onClick={() => turn({ x: 1, y: 0 })} aria-label="Right">→</Pad>
         </div>
       </div>
       <p className="text-[10px] text-center text-slate-400">Swipe on the board or use the arrows below</p>
@@ -500,19 +507,13 @@ export function TetrisGame({ paused, active, onMilestone }) {
           )}
         </svg>
       </GameCanvas>
-      <div className="flex justify-center gap-2">
-        <button type="button" disabled={paused || !active} onClick={() => tryMove(-1, 0)} className="h-9 w-9 rounded-lg bg-slate-200 text-slate-700 font-bold text-sm">
-          ←
-        </button>
-        <button type="button" disabled={paused || !active} onClick={() => tryMove(0, 0, rotateShape(pieceRef.current.shape))} className="h-9 px-3 rounded-lg bg-violet-100 text-violet-700 font-semibold text-xs">
+      <div className="flex justify-center gap-1.5">
+        <Pad disabled={paused || !active} onClick={() => tryMove(-1, 0)} aria-label="Left">←</Pad>
+        <Pad accent disabled={paused || !active} onClick={() => tryMove(0, 0, rotateShape(pieceRef.current.shape))}>
           Rotate
-        </button>
-        <button type="button" disabled={paused || !active} onClick={() => tryMove(1, 0)} className="h-9 w-9 rounded-lg bg-slate-200 text-slate-700 font-bold text-sm">
-          →
-        </button>
-        <button type="button" disabled={paused || !active} onClick={() => tryMove(0, 1)} className="h-9 px-3 rounded-lg bg-slate-200 text-slate-700 font-semibold text-xs">
-          Drop
-        </button>
+        </Pad>
+        <Pad disabled={paused || !active} onClick={() => tryMove(1, 0)} aria-label="Right">→</Pad>
+        <Pad disabled={paused || !active} onClick={() => tryMove(0, 1)}>Drop</Pad>
       </div>
     </div>
   );
@@ -615,7 +616,7 @@ export function CandyCrushGame({ paused, active, onMilestone }) {
                 type="button"
                 disabled={paused || !active}
                 onClick={() => tap(r, col)}
-                className={`rounded-md border border-white/10 ${selected?.r === r && selected?.c === col ? 'ring-2 ring-white' : ''}`}
+                className={`rounded-lg border border-white/10 transition-transform ${styles.glossTile} ${selected?.r === r && selected?.c === col ? `ring-2 ring-white ${styles.tileSelected}` : ''}`}
                 style={{ width: CELL, height: CELL, backgroundColor: CANDY[c] }}
               />
             ))
@@ -654,7 +655,7 @@ export function PopBlastGame({ paused, active, onMilestone }) {
                 type="button"
                 disabled={paused || !active}
                 onClick={() => pop(r, col)}
-                className="rounded-full border border-white/30 shadow-sm active:scale-95 transition-transform"
+                className={`rounded-full border border-white/30 active:scale-90 transition-transform ${styles.glossTile}`}
                 style={{ width: CELL, height: CELL, backgroundColor: CANDY[c] }}
               />
             ))

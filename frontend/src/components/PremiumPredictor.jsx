@@ -10,6 +10,10 @@ const REGIONS = [
   { value: 'northwest', label: 'Northwest' },
 ];
 
+const IS_LOCAL =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
 function formatCurrency(n) {
   return `S$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -71,7 +75,18 @@ export default function PremiumPredictor({ onShare, hideTitle = false }) {
 
       {mlAvailable === false && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-          ML service offline. Start it with: <code className="text-[10px]">cd backend/ml && pip install -r requirements.txt && python app.py</code>
+          {IS_LOCAL ? (
+            <>
+              ML service offline. Start it with:{' '}
+              <code className="text-[10px]">cd backend/ml && pip install -r requirements.txt && python app.py</code>
+            </>
+          ) : (
+            <>
+              ML premium predictor is not running on this deployment. On Render, set Start Command to{' '}
+              <code className="text-[10px]">bash start.sh</code> (or deploy with the Docker runtime — see{' '}
+              <code className="text-[10px]">backend/RENDER.md</code>).
+            </>
+          )}
         </div>
       )}
 

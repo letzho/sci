@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, DollarSign, ClipboardList } from 'lucide-react';
+import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, DollarSign, ClipboardList, FileSearch } from 'lucide-react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { mergeGamification, useGamificationBonus } from '../../context/GamificationBonusContext.jsx';
 import FlightSimulatorModal from '../../components/FlightSimulatorModal.jsx';
+import ClientBriefModal from '../../components/ClientBriefModal.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import BadgeGallery from '../../components/BadgeGallery.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [startingKey, setStartingKey] = useState(null);
   const [meetingTemplates, setMeetingTemplates] = useState([]);
   const [simulatorCustomer, setSimulatorCustomer] = useState(null);
+  const [briefCustomer, setBriefCustomer] = useState(null);
 
   useEffect(() => {
     api.get('/tools/meeting-templates').then((res) => setMeetingTemplates(res.data.templates)).catch(() => {});
@@ -252,18 +254,30 @@ export default function Dashboard() {
                   </Button>
                 ))}
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full mt-2"
-                onClick={() => navigate(`/agent/customers/${customer.id}/plan`)}
-              >
-                <ClipboardList size={14} /> Plan & export PDF
-              </Button>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Button variant="primary" size="sm" onClick={() => setBriefCustomer(customer)} title="Pre-call background study">
+                  <FileSearch size={14} /> Brief
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate(`/agent/customers/${customer.id}/plan`)}
+                >
+                  <ClipboardList size={14} /> Plan
+                </Button>
+              </div>
             </Card>
           ))}
         </div>
       </div>
+
+      {briefCustomer && (
+        <ClientBriefModal
+          customerId={briefCustomer.id}
+          customerName={briefCustomer.name}
+          onClose={() => setBriefCustomer(null)}
+        />
+      )}
 
       {simulatorCustomer && (
         <FlightSimulatorModal

@@ -13,7 +13,29 @@ const audioUpload = multer({
 });
 
 router.get('/transcribe/status', (req, res) => {
-  res.json({ whisper: openaiService.isEnabled() });
+  res.json({ whisper: openaiService.isEnabled(), tts: openaiService.isEnabled() });
+});
+
+/**
+ * OpenAI text-to-speech: returns an MP3 for a piece of approved text so the
+ * rep can hear a natural voice instead of the browser's robotic one. Falls
+ * back (503) to browser SpeechSynthesis on the client when no API key is set.
+ */
+router.post('/tts', async (req, res) => {
+  const { text } = req.body || {};
+  if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
+  if (!openaiService.isEnabled()) return res.status(503).json({ error: 'TTS requires OPENAI_API_KEY' });
+
+  try {
+    const audio = await openaiService.synthesizeSpeech(text);
+    if (!audio) return res.status(422).json({ error: 'Could not synthesize speech' });
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Cache-Control', 'no-store');
+    res.send(audio);
+  } catch (err) {
+    console.error('[guidance.routes] /tts error:', err);
+    res.status(500).json({ error: 'Speech synthesis failed' });
+  }
 });
 
 /**

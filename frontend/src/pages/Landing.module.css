@@ -1,75 +1,188 @@
-.hero {
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at 15% 15%, #f0f9ff, transparent 45%),
+    radial-gradient(circle at 85% 85%, #eef2ff, transparent 45%), #f8fafc;
+}
+
+.header {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(1.25rem, 5vw, 3rem);
+}
+
+.badge {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem clamp(1.25rem, 5vw, 3rem) 3rem;
+}
+
+.intro {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.title {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: 0.5rem;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 720px;
+}
+
+@media (max-width: 640px) {
+  .roles {
+    grid-template-columns: 1fr;
+  }
+}
+
+.roleCard {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem;
+  border-radius: 1.25rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   overflow: hidden;
 }
 
-.hero::before {
+.roleCard::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background-image: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.15), transparent 40%),
-    radial-gradient(circle at 90% 80%, rgba(56, 189, 248, 0.2), transparent 45%);
-  pointer-events: none;
+  inset: 0 0 auto 0;
+  height: 4px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
 }
 
-.heroContent {
-  position: relative;
-  z-index: 1;
-}
-
-.ctaPrimary {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.ctaPrimary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.3);
-}
-
-.ctaSecondary {
-  transition: transform 0.15s ease;
-}
-
-.ctaSecondary:hover {
-  transform: translateY(-2px);
-}
-
-.briefCard {
-  position: relative;
-}
-
-.briefCard::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 1rem;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.4), transparent 60%);
-  z-index: -1;
-}
-
-.solutionCard {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.solutionCard:hover {
+.roleCard:hover {
   transform: translateY(-4px);
-  box-shadow: 0 16px 32px -16px rgba(2, 132, 199, 0.25);
+  box-shadow: 0 20px 40px -22px rgba(2, 132, 199, 0.4);
+  border-color: #bae6fd;
 }
 
-.channelCard {
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.2s ease;
+.roleCard:hover::after {
+  opacity: 1;
 }
 
-.channelCard:hover {
-  transform: translateY(-4px);
+.rep::after {
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
 }
 
-.channelCard:hover .channelIcon {
-  transform: scale(1.15) rotate(-6deg);
+.client::after {
+  background: linear-gradient(90deg, #6366f1, #818cf8);
 }
 
-.channelIcon {
-  transition: transform 0.2s ease;
+.roleTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.iconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 0.9rem;
+}
+
+.rep .iconWrap {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.client .iconWrap {
+  background: #eef2ff;
+  color: #6366f1;
+}
+
+.device {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.roleTitle {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.roleDesc {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #64748b;
+  flex: 1;
+}
+
+.roleCta {
+  margin-top: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.rep .roleCta {
+  color: #0284c7;
+}
+
+.client .roleCta {
+  color: #6366f1;
+}
+
+.roleCta svg {
+  transition: transform 0.18s ease;
+}
+
+.roleCard:hover .roleCta svg {
+  transform: translateX(4px);
+}
+
+.footer {
+  text-align: center;
+  padding: 1.25rem;
+  font-size: 12px;
+  color: #94a3b8;
+  border-top: 1px solid #eef2f6;
 }

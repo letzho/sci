@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Gamepad2, X } from 'lucide-react';
+import { CheckCircle2, Gamepad2, X, Sparkles } from 'lucide-react';
 import api from '../../api/client';
 import { Button } from '../ui.jsx';
 import { GAME_COMPONENTS } from './MiniGames.jsx';
+import styles from './gameStyles.module.css';
+
+const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
 export default function GameSurveyOverlay({ survey: surveyProp, customerName, onSubmit, onDismiss }) {
   const [survey, setSurvey] = useState(surveyProp);
@@ -71,9 +74,11 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-3">
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-brand-50 shrink-0">
-          <div className="flex items-center gap-2">
-            <Gamepad2 size={18} className="text-violet-600" />
+        <div className="flex items-center justify-between px-4 py-3 border-b border-violet-100 bg-gradient-to-r from-violet-100 via-brand-50 to-white shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 to-brand-600 text-white flex items-center justify-center shadow-sm">
+              <Gamepad2 size={18} />
+            </span>
             <div>
               <div className="text-sm font-bold text-slate-800">{survey.title}</div>
               <div className="text-[10px] text-slate-500">Play &amp; answer — {questions.length} quick questions</div>
@@ -86,21 +91,34 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
           )}
         </div>
 
+        {/* Segmented progress across all questions */}
+        {phase !== 'pick' && questions.length > 0 && (
+          <div className="px-4 pt-3 shrink-0">
+            <div className={styles.progressRow}>
+              {questions.map((q, i) => {
+                const answered = i < Object.keys(answers).length;
+                const isActive = activeQuestionIndex === i;
+                return (
+                  <span
+                    key={q.id}
+                    className={`${styles.progressDot} ${answered ? styles.progressDotDone : ''} ${isActive ? styles.progressDotActive : ''}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="p-4 overflow-y-auto flex-1">
           {phase === 'pick' && (
             <div className="space-y-3">
               <p className="text-xs text-slate-600">{survey.intro}</p>
               <p className="text-[11px] font-semibold text-slate-700">Choose your game:</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 {(survey.games || []).map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => pickGame(g.id)}
-                    className="rounded-xl border border-slate-200 hover:border-violet-300 hover:bg-violet-50/50 p-3 text-left transition-colors"
-                  >
-                    <span className="text-2xl">{g.emoji}</span>
-                    <div className="text-xs font-semibold text-slate-800 mt-1">{g.label}</div>
+                  <button key={g.id} type="button" onClick={() => pickGame(g.id)} className={styles.pickCard}>
+                    <span className={styles.pickEmoji}>{g.emoji}</span>
+                    <div className="text-xs font-semibold text-slate-800 mt-1.5">{g.label}</div>
                   </button>
                 ))}
               </div>
@@ -128,11 +146,15 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
           )}
 
           {complete && (
-            <div className="text-center space-y-3 py-4">
-              <CheckCircle2 size={44} className="mx-auto text-emerald-500" />
-              <div className="text-lg font-bold text-slate-800">Thanks{customerName ? `, ${customerName.split(' ')[0]}` : ''}!</div>
-              <p className="text-sm text-slate-600">Your preferences were shared with your representative.</p>
-              <Button variant="outline" className="w-full" onClick={onDismiss}>
+            <div className="text-center space-y-3 py-6">
+              <div className={`mx-auto h-16 w-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg ${styles.celebrate}`}>
+                <CheckCircle2 size={34} className="text-white" />
+              </div>
+              <div className="text-lg font-bold text-slate-800">Thanks{customerName ? `, ${customerName.split(' ')[0]}` : ''}! 🎉</div>
+              <p className="text-sm text-slate-600 max-w-xs mx-auto">
+                Your preferences were shared with your representative — they'll tailor the conversation to you.
+              </p>
+              <Button variant="primary" className="w-full" onClick={onDismiss}>
                 Continue
               </Button>
             </div>
@@ -140,21 +162,20 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
         </div>
 
         {activeQuestion && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4 z-30">
-            <div className="bg-white rounded-2xl shadow-xl p-4 w-full max-w-sm animate-slide-in">
-              <div className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide mb-1">
-                Question {activeQuestionIndex + 1} of {questions.length}
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+            <div className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-sm animate-slide-in">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles size={12} className="text-violet-500" />
+                <span className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide">
+                  Question {activeQuestionIndex + 1} of {questions.length}
+                </span>
               </div>
-              <p className="text-sm font-medium text-slate-800 mb-3">{activeQuestion.text}</p>
-              <div className="space-y-1.5">
-                {activeQuestion.options.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => answerQuestion(opt.id)}
-                    className="w-full text-left text-xs rounded-xl border border-slate-200 hover:border-violet-400 hover:bg-violet-50 px-3 py-2.5 text-slate-700 transition-colors"
-                  >
-                    {opt.text}
+              <p className="text-sm font-semibold text-slate-800 mb-3">{activeQuestion.text}</p>
+              <div className="space-y-2">
+                {activeQuestion.options.map((opt, i) => (
+                  <button key={opt.id} type="button" onClick={() => answerQuestion(opt.id)} className={styles.optionRow}>
+                    <span className={styles.optionBadge}>{OPTION_LETTERS[i] || '•'}</span>
+                    <span>{opt.text}</span>
                   </button>
                 ))}
               </div>
