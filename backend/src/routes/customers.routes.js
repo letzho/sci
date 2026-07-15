@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/connection');
 const { buildPortfolioProfile, PRODUCT_LABELS } = require('../services/portfolioService');
 const { getPortfolioRecommendations } = require('../services/recommendationService');
+const { buildProductFit } = require('../services/productFitService');
 const openaiService = require('../services/openaiService');
 
 const router = express.Router();
@@ -220,6 +221,27 @@ router.get('/:id/brief', async (req, res) => {
   }
 
   res.json({ customer: mapped, portfolio, meta, brief, source });
+});
+
+/**
+ * Product Fit Guide: maps this customer's needs (rep-selected via ?needs=, or
+ * all five by default) to the product category that addresses each, with
+ * talking points for the rep. Compliance-safe — a guide for the rep, never a
+ * recommendation to the customer.
+ */
+router.get('/:id/product-fit', async (req, res) => {
+  const customer = await db.prepare(`SELECT * FROM customers WHERE id = ?`).get(req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  const policies = await db.prepare(`SELECT * FROM policies WHERE customer_id = ? ORDER BY created_at ASC`).all(customer.id);
+  const mapped = mapCustomer(customer, policies);
+
+  const selectedNeeds = (req.query.needs || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const fit = buildProductFit(mapped, mapped.policies, selectedNeeds);
+  res.json(fit);
 });
 
 router.get('/:id', async (req, res) => {

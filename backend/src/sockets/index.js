@@ -5,6 +5,32 @@ const quizAgent = require('../agents/quizAgent');
 const needsSurveyAgent = require('../agents/needsSurveyAgent');
 const { getQuiz } = require('../data/quizQuestions');
 const { getNeedsSurvey } = require('../data/needsSurveyQuestions');
+const { detectNeeds, NEEDS, getProduct } = require('../data/productKnowledge');
+
+/**
+ * Turns a piece of customer speech/chat into a compliance-safe product signal
+ * for the rep: which need was voiced and the product category that addresses
+ * it, with talking points. Returns null when no need is detected. This never
+ * goes to the customer — only the rep's guidance panel.
+ */
+function buildProductSignal(text) {
+  const needKeys = detectNeeds(text);
+  if (!needKeys.length) return null;
+  const needKey = needKeys[0];
+  const need = NEEDS[needKey];
+  const product = getProduct(need?.productType);
+  if (!need || !product) return null;
+  return {
+    need: { key: need.key, label: need.label },
+    product: {
+      productType: product.productType,
+      label: product.label,
+      emoji: product.emoji,
+      whatItDoes: product.whatItDoes,
+      talkingPoints: product.talkingPoints.slice(0, 2),
+    },
+  };
+}
 
 /**
  * Real-time layer for the Virtual Call and Chat channels.
@@ -169,6 +195,11 @@ function initSockets(io) {
 
       emitToAgents('transcript-update', { text, at: new Date().toISOString() });
 
+      // Compliance-safe product signal: if the customer voices a need, nudge
+      // the rep with the matching product category + talking points.
+      const productSignal = buildProductSignal(text);
+      if (productSignal) emitToAgents('product-signal', { signal: productSignal, at: new Date().toISOString() });
+
       try {
         const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
         const guidance = await orchestrator.getLiveGuidance({
@@ -193,6 +224,10 @@ function initSockets(io) {
       socket.to(conversationId).emit('chat-message', { sender, text, at: new Date().toISOString() });
 
       if (sender === 'customer') {
+        const productSignal = buildProductSignal(text);
+        if (productSignal && room.agentSocketId) {
+          io.to(room.agentSocketId).emit('product-signal', { signal: productSignal, at: new Date().toISOString() });
+        }
         try {
           const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
           const draft = await orchestrator.getChatDraft({

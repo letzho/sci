@@ -10,6 +10,7 @@ import PersonAvatar from '../../components/PersonAvatar.jsx';
 import ComplianceGuardTextarea from '../../components/ComplianceGuardTextarea.jsx';
 import ActivityMessageBubble from '../../components/ActivityMessageBubble.jsx';
 import GameSurveyPanel from '../../components/gameSurvey/GameSurveyPanel.jsx';
+import ProductSignalNudge from '../../components/ProductSignalNudge.jsx';
 import { mapConversationMessages, parseActivityPayload } from '../../utils/chatMessageFormat.js';
 import styles from './ChatReview.module.css';
 
@@ -48,6 +49,7 @@ export default function ChatReview() {
   const [policyAnalysis, setPolicyAnalysis] = useState(null);
   const [socket, setSocket] = useState(null);
   const [surveyResult, setSurveyResult] = useState(null);
+  const [productSignal, setProductSignal] = useState(null);
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
 
@@ -133,10 +135,13 @@ export default function ChatReview() {
       });
     };
 
+    const handleProductSignal = ({ signal }) => setProductSignal(signal);
+
     sock.on('chat-message', handleChatMessage);
     sock.on('chat-draft', handleChatDraft);
     sock.on('policy-shared', handlePolicyShared);
     sock.on('game-survey-result', handleGameSurveyResult);
+    sock.on('product-signal', handleProductSignal);
 
     return () => {
       sock.emit('leave-room', { conversationId });
@@ -144,6 +149,7 @@ export default function ChatReview() {
       sock.off('chat-draft', handleChatDraft);
       sock.off('policy-shared', handlePolicyShared);
       sock.off('game-survey-result', handleGameSurveyResult);
+      sock.off('product-signal', handleProductSignal);
     };
   }, [conversationId, agent]);
 
@@ -259,6 +265,9 @@ export default function ChatReview() {
       </Card>
 
       <div className="space-y-4 self-start">
+        {productSignal && (
+          <ProductSignalNudge signal={productSignal} onDismiss={() => setProductSignal(null)} />
+        )}
         {policyAnalysis && (
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-1">

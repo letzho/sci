@@ -1,6 +1,7 @@
 import { GitCompare } from 'lucide-react';
 import PolicyComparison from '../../components/PolicyComparison.jsx';
 import InsuranceComparison from '../../components/InsuranceComparison.jsx';
+import ProductTypeComparison from '../../components/ProductTypeComparison.jsx';
 import { Card } from '../../components/ui.jsx';
 
 /**
@@ -24,6 +25,10 @@ export default function PolicyCompare() {
 
       <Card className="p-5">
         <PolicyComparison />
+      </Card>
+
+      <Card className="p-5">
+        <ProductTypeComparison />
       </Card>
 
       <Card className="p-5">

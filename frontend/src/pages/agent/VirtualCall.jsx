@@ -10,6 +10,7 @@ import { useSentenceBuffer } from '../../hooks/useSentenceBuffer.js';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import AgentToolsPanel from '../../components/AgentToolsPanel.jsx';
 import ObjectionBusterPanel from '../../components/ObjectionBusterPanel.jsx';
+import ProductSignalNudge from '../../components/ProductSignalNudge.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import { attachVideoStream } from '../../utils/videoStream.js';
 import styles from './VirtualCall.module.css';
@@ -44,6 +45,7 @@ export default function VirtualCall() {
   const [camOn, setCamOn] = useState(true);
   const [callStatus, setCallStatus] = useState(null); // 'ringing' | 'no-presence' | 'declined' | null
   const [guidanceError, setGuidanceError] = useState(null);
+  const [productSignal, setProductSignal] = useState(null);
   const [objectionOpen, setObjectionOpen] = useState(false);
   const [socket] = useState(() => getSocket());
 
@@ -95,10 +97,12 @@ export default function VirtualCall() {
     const handleCallEnded = () => navigate('/agent');
     const handleCallRinging = ({ reached }) => setCallStatus(reached ? 'ringing' : 'no-presence');
     const handleCallDeclined = () => setCallStatus('declined');
+    const handleProductSignal = ({ signal }) => setProductSignal(signal);
 
     console.log('[VirtualCall] registering socket listeners, socket.id=', socket.id);
     socket.on('transcript-update', handleTranscript);
     socket.on('guidance-update', handleGuidance);
+    socket.on('product-signal', handleProductSignal);
     socket.on('call-ended', handleCallEnded);
     socket.on('call-ringing', handleCallRinging);
     socket.on('call-declined', handleCallDeclined);
@@ -106,6 +110,7 @@ export default function VirtualCall() {
     return () => {
       socket.off('transcript-update', handleTranscript);
       socket.off('guidance-update', handleGuidance);
+      socket.off('product-signal', handleProductSignal);
       socket.off('call-ended', handleCallEnded);
       socket.off('call-ringing', handleCallRinging);
       socket.off('call-declined', handleCallDeclined);
@@ -292,7 +297,10 @@ export default function VirtualCall() {
         )}
       </div>
 
-      <div className="lg:sticky lg:top-20 self-start">
+      <div className="lg:sticky lg:top-20 self-start space-y-3">
+        {productSignal && (
+          <ProductSignalNudge signal={productSignal} onDismiss={() => setProductSignal(null)} onSpeak={(text) => speak(text)} />
+        )}
         <AgentToolsPanel
           conversationId={conversationId}
           productType={conversation?.productContext}

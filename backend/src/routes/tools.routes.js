@@ -11,8 +11,23 @@ const { OBJECTIONS } = require('../data/objectionTypes');
 const { PERSONAS } = require('../data/simulatorPersonas');
 const researchAgent = require('../agents/researchAgent');
 const { predictPremium, checkMlHealth } = require('../services/premiumPredictor');
+const { listProducts, PRODUCT_TYPE_COMPARISON, NEEDS } = require('../data/productKnowledge');
 
 const router = express.Router();
+
+/** Product-category reference: the 5 in-scope product types compared side by side (feature B). */
+router.get('/product-types', (req, res) => {
+  res.json({
+    products: listProducts(),
+    dimensions: PRODUCT_TYPE_COMPARISON.dimensions,
+    disclaimer: PRODUCT_TYPE_COMPARISON.disclaimer,
+  });
+});
+
+/** The customer-need buckets used by the Product Fit Guide's priority selector. */
+router.get('/needs', (req, res) => {
+  res.json({ needs: Object.values(NEEDS).map((n) => ({ key: n.key, label: n.label, productType: n.productType })) });
+});
 
 /**
  * WebRTC TURN credentials for cross-network video. The Metered secret key
