@@ -3,8 +3,10 @@ import { GitCompare, UploadCloud, FileText, X, Sparkles, AlertTriangle } from 'l
 import api from '../api/client';
 import { Button, LoadingSpinner } from './ui.jsx';
 
+const MAX_FILES = 8;
+
 /**
- * Drag-and-drop policy comparison. The rep drops 2-4 policy PDFs (from any
+ * Drag-and-drop policy comparison. The rep drops 2-8 policy PDFs (from any
  * insurer); the AI reads each and returns a normalized, side-by-side table of
  * objective facts. Compliance-safe: it lays out differences, never a "best" pick.
  */
@@ -22,7 +24,7 @@ export default function PolicyComparison() {
     setFiles((prev) => {
       const combined = [...prev];
       for (const f of pdfs) {
-        if (!combined.some((c) => c.name === f.name && c.size === f.size) && combined.length < 4) {
+        if (!combined.some((c) => c.name === f.name && c.size === f.size) && combined.length < MAX_FILES) {
           combined.push(f);
         }
       }
@@ -77,7 +79,7 @@ export default function PolicyComparison() {
         <h3 className="text-sm font-semibold text-slate-700">Compare policy documents</h3>
       </div>
       <p className="text-[11px] text-slate-500">
-        Drop 2-4 policy PDFs (any insurer). AI lays out the differences side by side — objective facts only, never a recommendation.
+        Drop 2-{MAX_FILES} policy PDFs (any insurer). AI lays out the differences side by side — objective facts only, never a recommendation.
       </p>
 
       {!comparison && (
@@ -97,7 +99,7 @@ export default function PolicyComparison() {
           >
             <UploadCloud size={22} className="mx-auto text-brand-500 mb-1.5" />
             <p className="text-xs font-medium text-slate-600">Drag policy PDFs here</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">or click to browse · up to 4 files</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">or click to browse · up to {MAX_FILES} files</p>
             <input
               ref={inputRef}
               type="file"

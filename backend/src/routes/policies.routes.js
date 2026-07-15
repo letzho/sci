@@ -6,9 +6,10 @@ const openaiService = require('../services/openaiService');
 
 const router = express.Router();
 
+const MAX_COMPARE_FILES = 8;
 const comparisonUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 4 },
+  limits: { fileSize: 10 * 1024 * 1024, files: MAX_COMPARE_FILES },
 });
 
 /**
@@ -17,7 +18,7 @@ const comparisonUpload = multer({
  * side-by-side comparison table of objective facts — never a recommendation.
  */
 router.post('/compare', (req, res) => {
-  comparisonUpload.array('files', 4)(req, res, async (uploadErr) => {
+  comparisonUpload.array('files', MAX_COMPARE_FILES)(req, res, async (uploadErr) => {
     if (uploadErr) return res.status(400).json({ error: uploadErr.message || 'Upload failed' });
     const files = req.files || [];
     if (files.length < 2) return res.status(400).json({ error: 'Upload at least 2 policy documents to compare.' });

@@ -478,7 +478,7 @@ async function comparePolicyDocuments(documents) {
   if (!isEnabled() || !Array.isArray(documents) || documents.length < 1) return null;
   try {
     const openai = getClient();
-    const perDocBudget = Math.floor(24000 / documents.length);
+    const perDocBudget = Math.floor(32000 / documents.length);
     const blocks = documents
       .map((d, i) => {
         const body = (d.text || '').slice(0, perDocBudget);
@@ -490,7 +490,7 @@ async function comparePolicyDocuments(documents) {
       openai.chat.completions.create({
         model: MODEL,
         temperature: 0.1,
-        max_tokens: 1400,
+        max_tokens: 2200,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: COMPARISON_SYSTEM_PROMPT },
