@@ -116,11 +116,25 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
   const addLocalTracks = useCallback(
     async (pc) => {
       const stream = await waitForLocalStream();
-      if (!stream) return;
-      const existingTrackIds = new Set(pc.getSenders().map((s) => s.track?.id).filter(Boolean));
-      stream.getTracks().forEach((track) => {
-        if (!existingTrackIds.has(track.id)) pc.addTrack(track, stream);
-      });
+      if (stream) {
+        const existingTrackIds = new Set(pc.getSenders().map((s) => s.track?.id).filter(Boolean));
+        stream.getTracks().forEach((track) => {
+          if (!existingTrackIds.has(track.id)) pc.addTrack(track, stream);
+        });
+      }
+      // Guarantee the SDP has audio+video m-lines even when local media isn't
+      // available (camera/mic denied or still initialising). Without this, an
+      // offer with zero m-lines fails to negotiate; with recvonly transceivers
+      // the call still connects and the remote video flows one-way.
+      if (pc.getTransceivers().length === 0) {
+        const dir = stream ? 'sendrecv' : 'recvonly';
+        try {
+          pc.addTransceiver('audio', { direction: dir });
+          pc.addTransceiver('video', { direction: dir });
+        } catch (_) {
+          /* older browsers without addTransceiver — offer will still include added tracks */
+        }
+      }
     },
     [waitForLocalStream]
   );

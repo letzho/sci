@@ -118,10 +118,12 @@ export function getIceServers() {
 
 /** @param {{ forceRelay?: boolean }} opts */
 export function getPeerConnectionConfig({ forceRelay = false } = {}) {
+  // Note: no bundlePolicy 'max-bundle' — it rejects an offer that has no media
+  // (BUNDLE group), which happens if createOffer runs before camera/mic tracks
+  // are added. The default 'balanced' policy negotiates the bundle safely.
   const config = {
     iceServers: getIceServers(),
     iceCandidatePoolSize: 10,
-    bundlePolicy: 'max-bundle',
   };
   if (forceRelay) config.iceTransportPolicy = 'relay';
   return config;
