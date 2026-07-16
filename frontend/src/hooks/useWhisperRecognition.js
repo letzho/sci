@@ -124,14 +124,29 @@ function blobFilename(mimeType) {
   return 'utterance.webm';
 }
 
-function preferWhisperMode() {
-  return import.meta.env.VITE_USE_WHISPER === 'true';
+/**
+ * Which engine to use, from VITE_STT_MODE:
+ *   'browser' (default) — Web Speech API. Streams word-by-word. Free. Chrome/Edge.
+ *   'whisper'           — OpenAI Whisper. Accurate, but batch: no word-by-word.
+ *   'hybrid'            — best of both: browser drives the live streaming caption,
+ *                         Whisper produces the accurate final that triggers guidance.
+ * VITE_USE_WHISPER=true is still honoured as the old flag for 'whisper'.
+ */
+function sttMode() {
+  const m = import.meta.env.VITE_STT_MODE;
+  if (m === 'hybrid' || m === 'whisper' || m === 'browser') return m;
+  if (import.meta.env.VITE_USE_WHISPER === 'true') return 'whisper';
+  return 'browser';
 }
 
 /**
- * Speech-to-text for virtual calls.
- * Default: browser Web Speech API (Chrome/Edge on localhost — reliable for local demos).
- * Optional: set VITE_USE_WHISPER=true to use OpenAI Whisper via MediaRecorder instead.
+ * Speech-to-text for virtual calls / face-to-face.
+ *
+ * In 'hybrid' mode both engines run at once: the browser's recogniser supplies
+ * live interim text (so the rep sees words appear as they're spoken) while its
+ * final results are deliberately ignored — Whisper's silence-gated, far more
+ * accurate transcript is what actually drives guidance. If Whisper is
+ * unavailable at any point, it degrades cleanly to browser-only.
  */
 export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-SG', enabled = true } = {}) {
   const onFinalResultRef = useRef(onFinalResult);
@@ -175,9 +190,11 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
       return undefined;
     }
 
-    // Default: browser speech (no Whisper / MediaRecorder) — best for local PC demos.
-    if (!preferWhisperMode() && browserSpeechAvailable()) {
-      setMode('browser');
+    const desired = sttMode();
+
+    // Browser-only needs no backend check.
+    if (desired === 'browser') {
+      setMode(browserSpeechAvailable() ? 'browser' : 'unsupported');
       return undefined;
     }
 
@@ -186,14 +203,15 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
       .get('/guidance/transcribe/status')
       .then((res) => {
         if (cancelled || whisperUnavailableRef.current) return;
-        if (preferWhisperMode() && res.data?.whisper && canUseMediaRecorder()) setMode('whisper');
+        const whisperOk = Boolean(res.data?.whisper) && canUseMediaRecorder();
+        if (desired === 'hybrid' && whisperOk && browserSpeechAvailable()) setMode('hybrid');
+        else if (whisperOk) setMode('whisper');
         else if (browserSpeechAvailable()) setMode('browser');
         else setMode('unsupported');
       })
       .catch(() => {
         if (cancelled) return;
-        if (browserSpeechAvailable()) setMode('browser');
-        else setMode('unsupported');
+        setMode(browserSpeechAvailable() ? 'browser' : 'unsupported');
       });
     return () => {
       cancelled = true;
@@ -414,6 +432,13 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
       setIsListening(true);
       return;
     }
+    if (mode === 'hybrid') {
+      // Browser runs purely for live interim text; its finals are ignored
+      // (see the gate in the useSpeechRecognition callback above).
+      if (browserSpeechAvailable()) browser.start();
+      startWhisper();
+      return;
+    }
     startWhisper();
   }, [browser, mode, startWhisper]);
 
@@ -423,12 +448,25 @@ export function useWhisperRecognition({ onFinalResult, mediaStream, lang = 'en-S
       setIsListening(false);
       return;
     }
+    if (mode === 'hybrid') {
+      browser.stop();
+      stopWhisper();
+      return;
+    }
     stopWhisper();
   }, [browser, mode, stopWhisper]);
 
   const usingBrowser = mode === 'browser' || whisperUnavailableRef.current;
+  const isHybrid = mode === 'hybrid' && !whisperUnavailableRef.current;
+
   const listening = usingBrowser ? browser.isListening : isListening;
-  const interim = usingBrowser ? browser.interimText : interimText;
+  // Hybrid: prefer the browser's live word-by-word text; fall back to Whisper's
+  // status line ("Listening…" / "Transcribing…") between utterances.
+  const interim = usingBrowser
+    ? browser.interimText
+    : isHybrid
+      ? browser.interimText || interimText
+      : interimText;
   const supported =
     mode === 'unsupported' ? false : usingBrowser ? browser.isSupported || browserSpeechAvailable() : isSupported;
 
