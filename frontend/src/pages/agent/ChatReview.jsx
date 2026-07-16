@@ -11,6 +11,8 @@ import ComplianceGuardTextarea from '../../components/ComplianceGuardTextarea.js
 import ActivityMessageBubble from '../../components/ActivityMessageBubble.jsx';
 import GameSurveyPanel from '../../components/gameSurvey/GameSurveyPanel.jsx';
 import ProductSignalNudge from '../../components/ProductSignalNudge.jsx';
+import UnderstandingNudge from '../../components/UnderstandingNudge.jsx';
+import ClarityRecapModal from '../../components/ClarityRecapModal.jsx';
 import { mapConversationMessages, parseActivityPayload } from '../../utils/chatMessageFormat.js';
 import styles from './ChatReview.module.css';
 
@@ -50,6 +52,8 @@ export default function ChatReview() {
   const [socket, setSocket] = useState(null);
   const [surveyResult, setSurveyResult] = useState(null);
   const [productSignal, setProductSignal] = useState(null);
+  const [confusion, setConfusion] = useState(null);
+  const [recapOpen, setRecapOpen] = useState(false);
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
 
@@ -136,12 +140,14 @@ export default function ChatReview() {
     };
 
     const handleProductSignal = ({ signal }) => setProductSignal(signal);
+    const handleUnderstanding = ({ confusion: c }) => setConfusion(c);
 
     sock.on('chat-message', handleChatMessage);
     sock.on('chat-draft', handleChatDraft);
     sock.on('policy-shared', handlePolicyShared);
     sock.on('game-survey-result', handleGameSurveyResult);
     sock.on('product-signal', handleProductSignal);
+    sock.on('understanding-signal', handleUnderstanding);
 
     return () => {
       sock.emit('leave-room', { conversationId });
@@ -150,6 +156,7 @@ export default function ChatReview() {
       sock.off('policy-shared', handlePolicyShared);
       sock.off('game-survey-result', handleGameSurveyResult);
       sock.off('product-signal', handleProductSignal);
+      sock.off('understanding-signal', handleUnderstanding);
     };
   }, [conversationId, agent]);
 
@@ -265,6 +272,11 @@ export default function ChatReview() {
       </Card>
 
       <div className="space-y-4 self-start">
+        {recapOpen && <ClarityRecapModal conversationId={conversationId} onClose={() => setRecapOpen(false)} />}
+        <Button variant="secondary" size="sm" className="w-full" onClick={() => setRecapOpen(true)}>
+          <FileText size={14} /> Clarity Recap
+        </Button>
+        {confusion && <UnderstandingNudge confusion={confusion} onDismiss={() => setConfusion(null)} />}
         {productSignal && (
           <ProductSignalNudge signal={productSignal} onDismiss={() => setProductSignal(null)} />
         )}

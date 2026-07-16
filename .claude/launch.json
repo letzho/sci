@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "cgsi-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/NYP_FILE/POLYFINTECH_HACKATHON2026/CGSI/frontend", "run", "dev"],
+      "port": 6174
     }
   ]
 }

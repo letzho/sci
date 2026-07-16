@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Mic, MicOff, PhoneOff, Shield, Video, VideoOff } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Shield, Video, VideoOff, FileText } from 'lucide-react';
 import api from '../../api/client';
 import { getSocket } from '../../socket.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -11,6 +11,8 @@ import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import AgentToolsPanel from '../../components/AgentToolsPanel.jsx';
 import ObjectionBusterPanel from '../../components/ObjectionBusterPanel.jsx';
 import ProductSignalNudge from '../../components/ProductSignalNudge.jsx';
+import UnderstandingNudge from '../../components/UnderstandingNudge.jsx';
+import ClarityRecapModal from '../../components/ClarityRecapModal.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import { attachVideoStream } from '../../utils/videoStream.js';
 import styles from './VirtualCall.module.css';
@@ -46,6 +48,8 @@ export default function VirtualCall() {
   const [callStatus, setCallStatus] = useState(null); // 'ringing' | 'no-presence' | 'declined' | null
   const [guidanceError, setGuidanceError] = useState(null);
   const [productSignal, setProductSignal] = useState(null);
+  const [confusion, setConfusion] = useState(null);
+  const [recapOpen, setRecapOpen] = useState(false);
   const [objectionOpen, setObjectionOpen] = useState(false);
   const [socket] = useState(() => getSocket());
 
@@ -98,11 +102,13 @@ export default function VirtualCall() {
     const handleCallRinging = ({ reached }) => setCallStatus(reached ? 'ringing' : 'no-presence');
     const handleCallDeclined = () => setCallStatus('declined');
     const handleProductSignal = ({ signal }) => setProductSignal(signal);
+    const handleUnderstanding = ({ confusion: c }) => setConfusion(c);
 
     console.log('[VirtualCall] registering socket listeners, socket.id=', socket.id);
     socket.on('transcript-update', handleTranscript);
     socket.on('guidance-update', handleGuidance);
     socket.on('product-signal', handleProductSignal);
+    socket.on('understanding-signal', handleUnderstanding);
     socket.on('call-ended', handleCallEnded);
     socket.on('call-ringing', handleCallRinging);
     socket.on('call-declined', handleCallDeclined);
@@ -111,6 +117,7 @@ export default function VirtualCall() {
       socket.off('transcript-update', handleTranscript);
       socket.off('guidance-update', handleGuidance);
       socket.off('product-signal', handleProductSignal);
+      socket.off('understanding-signal', handleUnderstanding);
       socket.off('call-ended', handleCallEnded);
       socket.off('call-ringing', handleCallRinging);
       socket.off('call-declined', handleCallDeclined);
@@ -189,6 +196,7 @@ export default function VirtualCall() {
 
   return (
     <div className="relative">
+      {recapOpen && <ClarityRecapModal conversationId={conversationId} onClose={() => setRecapOpen(false)} />}
       {objectionOpen && (
         <>
           <button type="button" className="fixed inset-0 bg-black/30 z-40" onClick={() => setObjectionOpen(false)} aria-label="Close objections" />
@@ -277,6 +285,9 @@ export default function VirtualCall() {
           <Button variant="secondary" size="sm" onClick={() => setObjectionOpen(true)} title="Objection Buster — Feel-Felt-Found scripts">
             <Shield size={15} /> Objections
           </Button>
+          <Button variant="secondary" size="sm" onClick={() => setRecapOpen(true)} title="Generate a Clarity Recap to share with the client">
+            <FileText size={15} /> Recap
+          </Button>
           <Button variant="danger" size="sm" onClick={handleEndCall}>
             <PhoneOff size={15} /> End call
           </Button>
@@ -298,6 +309,7 @@ export default function VirtualCall() {
       </div>
 
       <div className="lg:sticky lg:top-20 self-start space-y-3">
+        {confusion && <UnderstandingNudge confusion={confusion} onDismiss={() => setConfusion(null)} />}
         {productSignal && (
           <ProductSignalNudge signal={productSignal} onDismiss={() => setProductSignal(null)} onSpeak={(text) => speak(text)} />
         )}

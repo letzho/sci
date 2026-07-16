@@ -400,6 +400,113 @@ async function transcribeAudio(audioBuffer, filename = 'audio.webm') {
   }
 }
 
+const LANGUAGE_NAMES = { en: 'English', zh: 'Simplified Chinese', ms: 'Malay', ta: 'Tamil' };
+
+const CLARITY_RECAP_SYSTEM_PROMPT = `You write a short, warm end-of-meeting recap that an insurance representative reviews and then shares with the customer, so the customer remembers what was discussed and what is still unclear. You are NOT a financial adviser.
+Rules you must always follow:
+- Use ONLY what is in the conversation transcript and the list of topics covered. Never invent product details, numbers, or coverage.
+- Never recommend, advise, or tell the customer what to buy or do. Summarise what was explained; do not push a decision.
+- Be honest about what remained unclear — this builds trust and is the point of the recap.
+- Plain, friendly language a normal person understands. No jargon without a one-line explanation.
+- Respond with ONLY a JSON object (no markdown fences) with exactly these keys:
+  {
+    "greeting": "one warm line addressed to the customer",
+    "explained": ["short bullets of what was covered and clarified"],
+    "stillUnclear": ["topics the customer seemed unsure about, or that need follow-up — empty array if none"],
+    "sources": ["where the information came from, e.g. 'MediShield Life guidelines', 'your uploaded policy' — from the provided sources only"],
+    "nextSteps": ["neutral, non-pushy next steps, e.g. 'Review this summary', 'Bring questions to the next chat'"]
+  }
+Write everything in {{LANGUAGE}}.`;
+
+/**
+ * Generates a compliance-safe end-of-session Clarity Recap for the customer
+ * from the conversation context, optionally translated into the target
+ * language (en/zh/ms/ta). Returns null on failure (route falls back to a
+ * deterministic recap).
+ */
+async function generateClarityRecap({ context, language = 'en' }) {
+  if (!isEnabled() || !context) return null;
+  const langName = LANGUAGE_NAMES[language] || 'English';
+  try {
+    const openai = getClient();
+    const transcript = (context.transcript || '').slice(0, 8000);
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.4,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: CLARITY_RECAP_SYSTEM_PROMPT.replace('{{LANGUAGE}}', langName) },
+          {
+            role: 'user',
+            content: `Topics covered: ${(context.topicsCovered || []).join('; ') || '(none logged)'}
+Sources used: ${(context.sources || []).join(', ') || '(rule engine / approved messaging)'}
+Moments the customer seemed unsure: ${(context.confusedMoments || []).map((c) => `"${c}"`).join(' ') || '(none detected)'}
+
+Conversation transcript:
+${transcript || '(no transcript captured)'}
+
+Write the recap JSON in ${langName}.`,
+          },
+        ],
+      }),
+      15000
+    );
+    const raw = completion?.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const arr = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []);
+    return {
+      greeting: typeof parsed.greeting === 'string' ? parsed.greeting : null,
+      explained: arr(parsed.explained),
+      stillUnclear: arr(parsed.stillUnclear),
+      sources: arr(parsed.sources),
+      nextSteps: arr(parsed.nextSteps),
+      language,
+    };
+  } catch (err) {
+    console.warn('[openaiService] generateClarityRecap failed, using deterministic recap:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Translates an already-built recap object's text into the target language,
+ * used when re-selecting a language for a deterministic (non-AI) recap.
+ * Returns null on failure so the caller keeps the original text.
+ */
+async function translateRecap({ recap, language }) {
+  if (!isEnabled() || !recap || !language || language === 'en') return null;
+  const langName = LANGUAGE_NAMES[language] || 'English';
+  try {
+    const openai = getClient();
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.2,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `Translate the text values of this JSON into ${langName}. Keep the exact same JSON keys and array structure. Do not add, remove, or reinterpret content. Respond with ONLY the translated JSON object.`,
+          },
+          { role: 'user', content: JSON.stringify(recap) },
+        ],
+      }),
+      12000
+    );
+    const raw = completion?.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return { ...recap, ...parsed, language };
+  } catch (err) {
+    console.warn('[openaiService] translateRecap failed:', err.message);
+    return null;
+  }
+}
+
 const CLIENT_BRIEF_SYSTEM_PROMPT = `You prepare a short pre-call briefing that helps an insurance representative walk into a conversation well-informed and personable. You are NOT a financial adviser.
 Rules you must always follow:
 - Only use the customer facts, portfolio summary, and past-conversation notes provided. Never invent details.
@@ -599,4 +706,4 @@ Max 5 recommendations. Only use the 5 product types listed.`;
   }
 }
 
-module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, extractPolicyBenefitTable, comparePolicyDocuments, generateClientBrief, embedText, transcribeAudio, synthesizeSpeech, generatePortfolioRecommendations };
+module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, extractPolicyBenefitTable, comparePolicyDocuments, generateClientBrief, generateClarityRecap, translateRecap, embedText, transcribeAudio, synthesizeSpeech, generatePortfolioRecommendations };

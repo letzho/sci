@@ -6,6 +6,7 @@ const needsSurveyAgent = require('../agents/needsSurveyAgent');
 const { getQuiz } = require('../data/quizQuestions');
 const { getNeedsSurvey } = require('../data/needsSurveyQuestions');
 const { detectNeeds, NEEDS, getProduct } = require('../data/productKnowledge');
+const { detectConfusion } = require('../services/comprehensionService');
 
 /**
  * Turns a piece of customer speech/chat into a compliance-safe product signal
@@ -200,6 +201,13 @@ function initSockets(io) {
       const productSignal = buildProductSignal(text);
       if (productSignal) emitToAgents('product-signal', { signal: productSignal, at: new Date().toISOString() });
 
+      // Understanding signal: if the customer sounds confused, nudge the rep to
+      // clarify before moving on (the "did they actually understand?" check).
+      const confusion = detectConfusion(text);
+      if (confusion.confused) {
+        emitToAgents('understanding-signal', { confusion: { strength: confusion.strength, text }, at: new Date().toISOString() });
+      }
+
       try {
         const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
         const guidance = await orchestrator.getLiveGuidance({
@@ -227,6 +235,10 @@ function initSockets(io) {
         const productSignal = buildProductSignal(text);
         if (productSignal && room.agentSocketId) {
           io.to(room.agentSocketId).emit('product-signal', { signal: productSignal, at: new Date().toISOString() });
+        }
+        const confusion = detectConfusion(text);
+        if (confusion.confused && room.agentSocketId) {
+          io.to(room.agentSocketId).emit('understanding-signal', { confusion: { strength: confusion.strength, text }, at: new Date().toISOString() });
         }
         try {
           const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
