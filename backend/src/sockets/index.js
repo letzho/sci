@@ -6,7 +6,7 @@ const needsSurveyAgent = require('../agents/needsSurveyAgent');
 const { getQuiz } = require('../data/quizQuestions');
 const { getNeedsSurvey } = require('../data/needsSurveyQuestions');
 const { detectNeeds, NEEDS, getProduct } = require('../data/productKnowledge');
-const { detectConfusion } = require('../services/comprehensionService');
+const { detectConfusion, isMeaningfulUtterance } = require('../services/comprehensionService');
 
 /**
  * Turns a piece of customer speech/chat into a compliance-safe product signal
@@ -206,6 +206,12 @@ function initSockets(io) {
       const confusion = detectConfusion(text);
       if (confusion.confused) {
         emitToAgents('understanding-signal', { confusion: { strength: confusion.strength, text }, at: new Date().toISOString() });
+      }
+
+      // Don't burn a guidance + web-search round trip on filler ("Sure is.").
+      if (!isMeaningfulUtterance(text)) {
+        console.log(`[sockets] skipping guidance for filler utterance: "${text}"`);
+        return;
       }
 
       try {

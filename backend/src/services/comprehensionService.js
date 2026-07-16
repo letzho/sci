@@ -31,6 +31,20 @@ const CONFUSION_PHRASES = [
 const WEAK_SIGNALS = ['i guess', 'i think so', 'maybe', 'i suppose', 'ok i think', 'okay i think', 'sort of', 'kind of'];
 
 /**
+ * Guards against firing guidance (and a web-search round trip) on filler like
+ * "Sure is." / "Okay." / "Yes." A short but genuine question still counts.
+ * Mirrors the client-side sentence buffer — defence in depth.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isMeaningfulUtterance(text) {
+  if (!text || !text.trim()) return false;
+  const trimmed = text.trim();
+  if (/\?\s*$/.test(trimmed)) return true;
+  return trimmed.split(/\s+/).filter(Boolean).length >= 3;
+}
+
+/**
  * @param {string} text  the customer's latest utterance / message
  * @returns {{confused: boolean, strength: 'high'|'low', matched: string[]}}
  */
@@ -97,4 +111,4 @@ async function buildRecapContext(db, conversationId) {
   };
 }
 
-module.exports = { detectConfusion, buildRecapContext, CONFUSION_PHRASES };
+module.exports = { detectConfusion, isMeaningfulUtterance, buildRecapContext, CONFUSION_PHRASES };

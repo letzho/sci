@@ -42,6 +42,8 @@ export default function AgentToolsPanel({
   history,
   guidanceError,
   isSupported,
+  interimText,
+  isListening,
   onSpeak,
 }) {
   const [tab, setTab] = useState('guidance');
@@ -104,6 +106,24 @@ export default function AgentToolsPanel({
             <p className="text-[11px] text-rose-600 mb-2">Speech recognition is not supported in this browser. Use Chrome on desktop.</p>
           )}
           {guidanceError && <p className="text-[11px] text-rose-600 mb-2">{guidanceError}</p>}
+
+          {/* Live transcription — words appear as they're spoken, so the rep can
+              see the mic is working before a full sentence triggers guidance. */}
+          {isListening && (
+            <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">Listening</span>
+              </div>
+              <p className="text-[11px] text-slate-500 italic min-h-[15px]">
+                {interimText ? interimText : <span className="text-slate-300">Speak — words appear here live…</span>}
+              </p>
+            </div>
+          )}
+
           <GuidancePanel history={history} onSpeak={onSpeak} />
         </>
       )}

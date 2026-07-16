@@ -155,7 +155,7 @@ export default function VirtualCall() {
   // so a half-spoken phrase doesn't trigger a premature flag.
   const { push: pushAgentFragment } = useSentenceBuffer(handleAgentFinal);
 
-  const { isListening, isSupported, start: startListening, stop: stopListening, ready } = useWhisperRecognition({
+  const { isListening, isSupported, interimText, start: startListening, stop: stopListening, ready } = useWhisperRecognition({
     onFinalResult: pushAgentFragment,
     mediaStream: localStream,
   });
@@ -324,6 +324,8 @@ export default function VirtualCall() {
           history={history}
           guidanceError={guidanceError}
           isSupported={isSupported}
+          interimText={interimText}
+          isListening={isListening}
           onSpeak={(text) => speak(text)}
         />
       </div>

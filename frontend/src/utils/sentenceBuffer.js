@@ -39,11 +39,23 @@ export function createSentenceBuffer({ onSentence, pauseMs = 1400, maxWords = 45
     }
   }
 
+  /**
+   * A sentence is worth acting on if it has real content, or is a short but
+   * genuine question ("What's an ILP?"). Filler like "Sure is." / "Okay." /
+   * "Yes." is not — firing guidance on those is noisy for the rep and wastes
+   * a knowledge-base + web-search round trip.
+   */
+  function isMeaningful(text) {
+    return wordCount(text) >= minWords || /\?\s*$/.test(text);
+  }
+
   function flush() {
     clearTimer();
     const text = buffer.trim();
     buffer = '';
-    if (text) onSentence?.(text);
+    if (!text) return;
+    if (!isMeaningful(text)) return; // drop filler rather than trigger guidance
+    onSentence?.(text);
   }
 
   function push(fragment) {
