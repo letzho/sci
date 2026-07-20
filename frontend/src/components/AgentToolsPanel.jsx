@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpenCheck, Calculator, Coffee, GitCompare, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Gamepad2, CalendarDays, Compass } from 'lucide-react';
+import { BookOpenCheck, Calculator, Coffee, GitCompare, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Lightbulb, CalendarDays, Compass } from 'lucide-react';
 import CustomerPlanPanel from './CustomerPlanPanel.jsx';
 import GameSurveyPanel from './gameSurvey/GameSurveyPanel.jsx';
 import AppointmentScheduler from './AppointmentScheduler.jsx';
@@ -23,7 +23,7 @@ const TABS = [
   { key: 'fit', label: 'Fit Guide', icon: Compass },
   { key: 'compare', label: 'Compare', icon: GitCompare },
   { key: 'quiz', label: 'Quiz', icon: BookOpenCheck },
-  { key: 'gameSurvey', label: 'Game', icon: Gamepad2 },
+  { key: 'gameSurvey', label: 'Insights', icon: Lightbulb },
   { key: 'plan', label: 'Plan', icon: ClipboardList },
   { key: 'meet', label: 'Meet', icon: Coffee },
   { key: 'schedule', label: 'Schedule', icon: CalendarDays },

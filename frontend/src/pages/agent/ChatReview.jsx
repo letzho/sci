@@ -135,7 +135,7 @@ export default function ChatReview() {
       };
       const enriched = mapConversationMessages([activityMsg])[0];
       setMessages((prev) => {
-        if (prev.some((m) => m.kind === 'game_survey' && m.activity?.title === 'Game completed')) return prev;
+        if (prev.some((m) => m.kind === 'game_survey' && m.activity?.title === 'Insight game completed')) return prev;
         return [...prev, enriched];
       });
     };

@@ -31,8 +31,8 @@ export function formatActivityForChat(message) {
   if (message.kind === 'game_survey') {
     if (data.action === 'started') {
       return {
-        title: 'Game sent',
-        body: data.title || 'Play & learn',
+        title: 'Insight game sent',
+        body: data.title || 'Did You Know?',
         tone: 'info',
       };
     }
@@ -40,8 +40,8 @@ export function formatActivityForChat(message) {
       const game = GAME_LABELS[data.gameChoice] || data.gameChoice || 'mini-game';
       const cards = data.cardsViewed || 0;
       return {
-        title: 'Game completed',
-        body: `Played ${game} · discovered ${cards} fact${cards === 1 ? '' : 's'}`,
+        title: 'Insight game completed',
+        body: `Played ${game} · saw ${cards} insight${cards === 1 ? '' : 's'}`,
         tone: 'success',
       };
     }

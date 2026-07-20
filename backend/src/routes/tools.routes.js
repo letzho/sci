@@ -176,8 +176,9 @@ router.get('/quiz', (req, res) => {
 });
 
 router.get('/game-flashcards', (req, res) => {
-  const { productType } = req.query;
-  res.json({ deck: getFlashcardDeck(productType || null) });
+  const { productType, held } = req.query;
+  const heldProductTypes = (held || '').split(',').map((s) => s.trim()).filter(Boolean);
+  res.json({ deck: getFlashcardDeck({ productType: productType || null, heldProductTypes }) });
 });
 
 router.post('/quiz/grade', async (req, res) => {

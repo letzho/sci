@@ -5,16 +5,13 @@ import { Button } from '../ui.jsx';
 import { GAME_COMPONENTS } from './MiniGames.jsx';
 import styles from './gameStyles.module.css';
 
-// How many flash cards to reveal in one play session — enough to feel like a
-// rewarding little "learn as you play" experience without dragging on.
-const MAX_CARDS = 4;
-
 /**
- * Play & Learn: the customer picks a mini-game; every so often play pauses to
- * reveal a short, interesting insurance fact — pure information, never a
- * question. Replaces the old milestone Q&A survey (see
- * backend/src/data/gameFlashcards.js for why: questions during play felt
- * like an interrogation and undermined trust; no answers are collected here).
+ * "Did You Know?": the customer picks a mini-game; every so often play pauses
+ * to reveal a short insurance insight — pure information, never a question.
+ * Replaces the old milestone Q&A survey (see backend/src/data/gameFlashcards.js
+ * for why: questions during play felt like an interrogation and undermined
+ * trust; no answers are collected here). The backend picks the cards at random
+ * each session, favouring cover the customer does not already hold.
  */
 export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubmit, onDismiss }) {
   const [deck, setDeck] = useState(deckProp);
@@ -31,7 +28,10 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
     setDeck(deckProp);
   }, [deckProp]);
 
+  // The backend already randomised and sized the deck for this session, so
+  // however many cards it sent is exactly how many we reveal.
   const cards = deck?.cards || [];
+  const totalCards = cards.length;
   cardsRef.current = cards;
 
   useEffect(() => {
@@ -47,10 +47,10 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
   const handleMilestone = useCallback(() => {
     const list = cardsRef.current;
     const i = nextCardRef.current;
-    if (!list?.length || i >= MAX_CARDS) return false;
+    if (!list?.length || i >= list.length) return false;
     nextCardRef.current = i + 1;
     setPaused(true);
-    setActiveCard(list[i % list.length]);
+    setActiveCard(list[i]);
     return true;
   }, []);
 
@@ -65,7 +65,7 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
     setCardsShown(shown);
     setActiveCard(null);
 
-    if (shown >= MAX_CARDS) {
+    if (shown >= totalCards) {
       setComplete(true);
       setPaused(true);
       onSubmit(gameId, shown);
@@ -86,7 +86,7 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
             </span>
             <div>
               <div className="text-sm font-bold text-slate-800">{deck.title}</div>
-              <div className="text-[10px] text-slate-500">Just play — a quick fact pops up along the way</div>
+              <div className="text-[10px] text-slate-500">Just play — a quick insight pops up along the way</div>
             </div>
           </div>
           {!complete && (
@@ -100,7 +100,7 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
         {phase !== 'pick' && (
           <div className="px-4 pt-3 shrink-0">
             <div className={styles.progressRow}>
-              {Array.from({ length: MAX_CARDS }, (_, i) => (
+              {Array.from({ length: totalCards }, (_, i) => (
                 <span
                   key={i}
                   className={`${styles.progressDot} ${i < cardsShown ? styles.progressDotDone : ''} ${activeCard && i === cardsShown ? styles.progressDotActive : ''}`}
@@ -133,11 +133,11 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
                   ? 'Game paused — check out this fact'
                   : gameId === 'tetris'
                     ? 'Use arrow keys or buttons below — a fact pops up as you stack pieces'
-                    : 'Keep playing — a quick fact will pop up along the way!'}
+                    : 'Keep playing — a quick insight will pop up along the way!'}
               </p>
               <GameComponent key={gameId} paused={paused} active={!complete} onMilestone={handleMilestone} />
               <p className="text-[10px] text-center text-slate-400">
-                {cardsShown}/{MAX_CARDS} facts discovered
+                {cardsShown}/{totalCards} insights discovered
                 {gameId === 'snake' && ' · Eat fruit to trigger a fact · swipe or use arrows'}
                 {gameId === 'tetris' && ' · ← → move · Rotate · Drop'}
                 {gameId === 'minesweeper' && ' · Reveal safe cells (every 4)'}
@@ -174,7 +174,7 @@ export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubm
               <p className="text-sm font-bold text-slate-800 mb-1.5">{activeCard.title}</p>
               <p className="text-[13px] text-slate-600 leading-relaxed mb-4">{activeCard.fact}</p>
               <Button variant="primary" className="w-full" onClick={dismissCard}>
-                {cardsShown + 1 >= MAX_CARDS ? 'Nice — finish up' : 'Neat — keep playing'}
+                {cardsShown + 1 >= totalCards ? 'Nice — finish up' : 'Neat — keep playing'}
               </Button>
             </div>
           </div>

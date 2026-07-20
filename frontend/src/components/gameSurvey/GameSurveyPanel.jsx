@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Gamepad2, Send, Sparkles } from 'lucide-react';
+import { Lightbulb, Send, Sparkles } from 'lucide-react';
 import api from '../../api/client';
 import { Badge, Button, Card } from '../ui.jsx';
 
@@ -12,9 +12,11 @@ const GAME_LABELS = {
 };
 
 /**
- * Rep-side panel: preview the flash-card deck, send it to the client, see
- * when they've played. No answers to review — this is a rapport/engagement
- * moment, not a data-collection form (see gameFlashcards.js for why).
+ * Rep-side panel for the "Did You Know?" insight cards: preview what the
+ * client may see, send it, and see when they've played. No answers to review —
+ * this is a rapport/education moment, not a data-collection form. Cards skew
+ * toward cover the client does not already hold, which surfaces cross-sell
+ * openings without the tool ever recommending anything.
  */
 export default function GameSurveyPanel({ conversationId, productType, customerName, socket, compact = false, initialResult = null }) {
   const [deckPreview, setDeckPreview] = useState(null);
@@ -40,11 +42,11 @@ export default function GameSurveyPanel({ conversationId, productType, customerN
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
       <div className="flex items-center gap-2">
-        <Gamepad2 size={14} className="text-violet-600" />
-        <h3 className="text-sm font-semibold text-slate-700">Play &amp; learn</h3>
+        <Lightbulb size={14} className="text-violet-600" />
+        <h3 className="text-sm font-semibold text-slate-700">Did You Know? insights</h3>
       </div>
       <p className="text-[11px] text-slate-500">
-        Send {customerName || 'your client'} a relaxing mini-game — quick, interesting insurance facts pop up as they play. No quiz, nothing to answer, just a nice break in the conversation.
+        Send {customerName || 'your client'} a relaxing mini-game — short insurance insights pop up as they play, picked at random and weighted toward cover they don't have yet. Nothing to answer, and a natural opening for what to discuss next.
       </p>
 
       {deckPreview && (
@@ -57,8 +59,9 @@ export default function GameSurveyPanel({ conversationId, productType, customerN
               </Badge>
             ))}
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 pt-0.5">
-            <Sparkles size={10} /> Facts include: {deckPreview.cards?.slice(0, 3).map((c) => c.title).join(', ')}…
+          <div className="flex items-start gap-1 text-[10px] text-slate-400 pt-0.5">
+            <Sparkles size={10} className="mt-0.5 shrink-0" />
+            <span>A fresh random mix each time — e.g. {deckPreview.cards?.slice(0, 3).map((c) => c.title).join(', ')}…</span>
           </div>
         </div>
       )}
@@ -66,6 +69,9 @@ export default function GameSurveyPanel({ conversationId, productType, customerN
       <Button size="sm" className="w-full" onClick={sendSurvey} disabled={!socket || !conversationId}>
         <Send size={14} /> Send game to client
       </Button>
+      {sent && surveyResult && (
+        <p className="text-[10px] text-slate-400 text-center">Send again for a fresh set of insights.</p>
+      )}
 
       {sent && !surveyResult && (
         <p className="text-[11px] text-brand-600">Waiting for {customerName || 'client'} to pick a game…</p>
@@ -77,7 +83,7 @@ export default function GameSurveyPanel({ conversationId, productType, customerN
             <span className="text-xs font-semibold text-emerald-800">
               {surveyResult.customerName || customerName || 'They'} played {GAME_LABELS[surveyResult.gameChoice] || surveyResult.gameChoice || 'a mini-game'}
             </span>
-            <Badge tone="success">{surveyResult.cardsViewed || 0} facts</Badge>
+            <Badge tone="success">{surveyResult.cardsViewed || 0} insights</Badge>
           </div>
           <p className="text-[11px] text-slate-600">A relaxed moment before you continue the conversation.</p>
         </Card>

@@ -383,7 +383,26 @@ function initSockets(io) {
     // questions during play felt like an interrogation and hurt trust).
     socket.on('game-survey-start', async ({ conversationId, productType } = {}) => {
       if (!conversationId) return;
-      const deck = getFlashcardDeck(productType);
+
+      // Favour insights about cover the customer does NOT already hold — that
+      // is the cross-sell angle, kept educational (the cards explain what a
+      // product does, never that they should buy it).
+      let heldProductTypes = [];
+      try {
+        const rows = await db
+          .prepare(
+            `SELECT DISTINCT p.product_type
+               FROM policies p
+               JOIN conversations c ON c.customer_id = p.customer_id
+              WHERE c.id = ?`
+          )
+          .all(conversationId);
+        heldProductTypes = rows.map((r) => r.product_type).filter(Boolean);
+      } catch (err) {
+        console.warn('[sockets] could not load held products for insight cards:', err.message);
+      }
+
+      const deck = getFlashcardDeck({ productType, heldProductTypes });
       emitToClients(conversationId, 'game-survey-start', { deck, productType });
       await adminAgent.logMessage({
         conversationId,
