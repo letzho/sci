@@ -106,7 +106,25 @@ Render Shell (Root Directory = `backend`):
 npm run seed
 ```
 
-Run once for demo agents/customers. Safe to re-run but it resets demo data.
+Run once to create the demo agents/customers.
+
+**Seeding is destructive and guarded.** It wipes every table before re-inserting
+demo data, so it refuses to run once the database is in use — i.e. as soon as any
+representative has signed up or any conversation exists. You'll see:
+
+```
+Seed SKIPPED — this database is already in use.
+```
+
+That protects testers' accounts and history during a live trial. To wipe and
+re-seed deliberately:
+
+```bash
+npm run seed -- --force
+```
+
+Because of the guard it is safe to leave seeding in the Start Command
+(`npm run seed && bash start.sh`) — restarts will no longer destroy real data.
 
 ## Health check
 

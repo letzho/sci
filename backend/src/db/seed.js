@@ -4,7 +4,12 @@
  * with policies across all 5 covered product lines, plus the full
  * knowledge base and compliance rule set.
  *
- * Safe to re-run: it wipes and re-creates rows each time (idempotent demo seed).
+ * DESTRUCTIVE: it wipes every table before re-inserting the demo data. To
+ * protect a live trial, it refuses to run once the database is in use (any
+ * signed-up agent or any conversation) unless you pass --force:
+ *
+ *   npm run seed              -> seeds only if the database is untouched
+ *   npm run seed -- --force   -> wipes everything and re-seeds
  */
 const bcrypt = require('bcryptjs');
 const db = require('./connection');
@@ -244,8 +249,40 @@ async function seedComplianceRules() {
   }
 }
 
-async function run() {
+/**
+ * Guard against destroying real usage. Seeding WIPES every table, so once
+ * testers have signed up or run sessions, a stray `npm run seed` (or a Render
+ * restart with seed in the start command) would delete their accounts and
+ * history. We therefore only seed automatically when the database looks
+ * untouched: no non-demo agents and no conversations.
+ *
+ * Pass --force (npm run seed -- --force) to wipe and re-seed anyway.
+ */
+const DEMO_EMAILS = ['agent@sci.demo', 'wei.ling@sci.demo'];
+
+async function inspectExistingData() {
+  const agentRows = await db.prepare(`SELECT email FROM agents`).all();
+  const realAgents = agentRows.filter((a) => !DEMO_EMAILS.includes(a.email));
+  const convos = await db.prepare(`SELECT COUNT(*) AS n FROM conversations`).get();
+  return { realAgents: realAgents.length, conversations: Number(convos?.n || 0) };
+}
+
+async function run({ force = false } = {}) {
   await initSchema();
+
+  if (!force) {
+    const existing = await inspectExistingData();
+    if (existing.realAgents > 0 || existing.conversations > 0) {
+      console.log('Seed SKIPPED — this database is already in use.');
+      console.log(`  ${existing.realAgents} signed-up agent account(s), ${existing.conversations} conversation(s) found.`);
+      console.log('  Seeding would DELETE them. Re-run with --force only if you really want to wipe everything:');
+      console.log('    npm run seed -- --force');
+      return;
+    }
+  } else {
+    console.log('--force given: wiping and re-seeding (all existing accounts and history will be deleted).');
+  }
+
   await clearAll();
   const agents = await seedAgents();
   const customers = await seedCustomersAndPolicies();
@@ -258,7 +295,8 @@ async function run() {
 }
 
 if (require.main === module) {
-  run()
+  const force = process.argv.includes('--force') || process.env.SEED_FORCE === 'true';
+  run({ force })
     .catch((err) => {
       console.error('Seed failed:', err);
       process.exitCode = 1;
