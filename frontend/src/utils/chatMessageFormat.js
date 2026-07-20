@@ -31,18 +31,17 @@ export function formatActivityForChat(message) {
   if (message.kind === 'game_survey') {
     if (data.action === 'started') {
       return {
-        title: 'Game survey sent',
-        body: data.title || 'Quick needs check-in',
+        title: 'Game sent',
+        body: data.title || 'Play & learn',
         tone: 'info',
       };
     }
     if (data.action === 'completed') {
       const game = GAME_LABELS[data.gameChoice] || data.gameChoice || 'mini-game';
+      const cards = data.cardsViewed || 0;
       return {
-        title: 'Game survey completed',
-        body: `Played ${game}`,
-        insights: data.insights || [],
-        summary: data.summary || null,
+        title: 'Game completed',
+        body: `Played ${game} · discovered ${cards} fact${cards === 1 ? '' : 's'}`,
         tone: 'success',
       };
     }

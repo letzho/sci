@@ -5,86 +5,76 @@ import { Button } from '../ui.jsx';
 import { GAME_COMPONENTS } from './MiniGames.jsx';
 import styles from './gameStyles.module.css';
 
-const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+// How many flash cards to reveal in one play session — enough to feel like a
+// rewarding little "learn as you play" experience without dragging on.
+const MAX_CARDS = 4;
 
-export default function GameSurveyOverlay({ survey: surveyProp, customerName, onSubmit, onDismiss }) {
-  const [survey, setSurvey] = useState(surveyProp);
+/**
+ * Play & Learn: the customer picks a mini-game; every so often play pauses to
+ * reveal a short, interesting insurance fact — pure information, never a
+ * question. Replaces the old milestone Q&A survey (see
+ * backend/src/data/gameFlashcards.js for why: questions during play felt
+ * like an interrogation and undermined trust; no answers are collected here).
+ */
+export default function GameSurveyOverlay({ deck: deckProp, customerName, onSubmit, onDismiss }) {
+  const [deck, setDeck] = useState(deckProp);
   const [phase, setPhase] = useState('pick');
   const [gameId, setGameId] = useState(null);
   const [paused, setPaused] = useState(false);
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState(null);
-  const [answers, setAnswers] = useState({});
-  const [learnTip, setLearnTip] = useState(null); // { text, nextAnswers, isLast }
+  const [activeCard, setActiveCard] = useState(null);
+  const [cardsShown, setCardsShown] = useState(0);
   const [complete, setComplete] = useState(false);
-  const nextQuestionRef = useRef(0);
-  const questionsRef = useRef([]);
+  const nextCardRef = useRef(0);
+  const cardsRef = useRef([]);
 
   useEffect(() => {
-    setSurvey(surveyProp);
-  }, [surveyProp]);
+    setDeck(deckProp);
+  }, [deckProp]);
 
-  const questions = survey?.questions || [];
-  questionsRef.current = questions;
+  const cards = deck?.cards || [];
+  cardsRef.current = cards;
 
   useEffect(() => {
-    if (questions.length) return;
+    if (cards.length) return;
     api
-      .get('/tools/needs-survey', { params: { productType: survey?.productType } })
-      .then((res) => setSurvey(res.data.survey))
+      .get('/tools/game-flashcards', { params: { productType: deck?.productType } })
+      .then((res) => setDeck(res.data.deck))
       .catch(() => {});
-  }, [questions.length, survey?.productType]);
+  }, [cards.length, deck?.productType]);
 
   const GameComponent = gameId ? GAME_COMPONENTS[gameId] : null;
 
   const handleMilestone = useCallback(() => {
-    const qs = questionsRef.current;
-    const qIndex = nextQuestionRef.current;
-    if (!qs?.length || qIndex >= qs.length) return false;
-    nextQuestionRef.current = qIndex + 1;
+    const list = cardsRef.current;
+    const i = nextCardRef.current;
+    if (!list?.length || i >= MAX_CARDS) return false;
+    nextCardRef.current = i + 1;
     setPaused(true);
-    setActiveQuestionIndex(qIndex);
+    setActiveCard(list[i % list.length]);
     return true;
   }, []);
 
   function pickGame(id) {
     setGameId(id);
     setPhase('playing');
-    nextQuestionRef.current = 0;
+    nextCardRef.current = 0;
   }
 
-  function answerQuestion(optionId) {
-    const q = questions[activeQuestionIndex];
-    if (!q) return;
-    const nextAnswers = { ...answers, [q.id]: optionId };
-    setAnswers(nextAnswers);
-    setActiveQuestionIndex(null);
+  function dismissCard() {
+    const shown = cardsShown + 1;
+    setCardsShown(shown);
+    setActiveCard(null);
 
-    const isLast = Object.keys(nextAnswers).length >= questions.length;
-
-    // Reveal the "Good to know" learning tip as the reward for answering — the
-    // learning payoff that makes sharing feel comfortable. Stay paused until the
-    // customer taps to continue; only then resume the game / finish.
-    if (q.learn) {
-      setLearnTip({ text: q.learn, nextAnswers, isLast });
-    } else {
-      finishAnswer(nextAnswers, isLast);
-    }
-  }
-
-  function finishAnswer(nextAnswers, isLast) {
-    setLearnTip(null);
-    if (isLast) {
+    if (shown >= MAX_CARDS) {
       setComplete(true);
       setPaused(true);
-      onSubmit(nextAnswers, gameId, () => {});
+      onSubmit(gameId, shown);
     } else {
       setPaused(false);
     }
   }
 
-  if (!survey) return null;
-
-  const activeQuestion = activeQuestionIndex != null ? questions[activeQuestionIndex] : null;
+  if (!deck) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-3">
@@ -95,8 +85,8 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
               <Gamepad2 size={18} />
             </span>
             <div>
-              <div className="text-sm font-bold text-slate-800">{survey.title}</div>
-              <div className="text-[10px] text-slate-500">Play, learn &amp; share — {questions.length} quick questions, each with a tip</div>
+              <div className="text-sm font-bold text-slate-800">{deck.title}</div>
+              <div className="text-[10px] text-slate-500">Just play — a quick fact pops up along the way</div>
             </div>
           </div>
           {!complete && (
@@ -106,20 +96,16 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
           )}
         </div>
 
-        {/* Segmented progress across all questions */}
-        {phase !== 'pick' && questions.length > 0 && (
+        {/* Segmented progress across the cards to be revealed */}
+        {phase !== 'pick' && (
           <div className="px-4 pt-3 shrink-0">
             <div className={styles.progressRow}>
-              {questions.map((q, i) => {
-                const answered = i < Object.keys(answers).length;
-                const isActive = activeQuestionIndex === i;
-                return (
-                  <span
-                    key={q.id}
-                    className={`${styles.progressDot} ${answered ? styles.progressDotDone : ''} ${isActive ? styles.progressDotActive : ''}`}
-                  />
-                );
-              })}
+              {Array.from({ length: MAX_CARDS }, (_, i) => (
+                <span
+                  key={i}
+                  className={`${styles.progressDot} ${i < cardsShown ? styles.progressDotDone : ''} ${activeCard && i === cardsShown ? styles.progressDotActive : ''}`}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -127,10 +113,10 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
         <div className="p-4 overflow-y-auto flex-1">
           {phase === 'pick' && (
             <div className="space-y-3">
-              <p className="text-xs text-slate-600">{survey.intro}</p>
+              <p className="text-xs text-slate-600">{deck.intro}</p>
               <p className="text-[11px] font-semibold text-slate-700">Choose your game:</p>
               <div className="grid grid-cols-2 gap-2.5">
-                {(survey.games || []).map((g) => (
+                {(deck.games || []).map((g) => (
                   <button key={g.id} type="button" onClick={() => pickGame(g.id)} className={styles.pickCard}>
                     <span className={styles.pickEmoji}>{g.emoji}</span>
                     <div className="text-xs font-semibold text-slate-800 mt-1.5">{g.label}</div>
@@ -143,17 +129,17 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
           {phase === 'playing' && GameComponent && !complete && (
             <div className="space-y-3">
               <p className="text-[11px] text-center text-slate-500">
-                {paused && activeQuestion
-                  ? 'Game paused — answer to continue'
+                {paused && activeCard
+                  ? 'Game paused — check out this fact'
                   : gameId === 'tetris'
-                    ? 'Use arrow keys or buttons below — questions pop up as you stack pieces'
-                    : 'Keep playing — questions appear as you progress!'}
+                    ? 'Use arrow keys or buttons below — a fact pops up as you stack pieces'
+                    : 'Keep playing — a quick fact will pop up along the way!'}
               </p>
               <GameComponent key={gameId} paused={paused} active={!complete} onMilestone={handleMilestone} />
               <p className="text-[10px] text-center text-slate-400">
-                Answered {Object.keys(answers).length}/{questions.length}
-                {gameId === 'snake' && ' · Eat fruit to trigger questions · swipe or use arrows'}
-                {gameId === 'tetris' && ' · ← → move · Rotate · Drop — 1 question per piece placed'}
+                {cardsShown}/{MAX_CARDS} facts discovered
+                {gameId === 'snake' && ' · Eat fruit to trigger a fact · swipe or use arrows'}
+                {gameId === 'tetris' && ' · ← → move · Rotate · Drop'}
                 {gameId === 'minesweeper' && ' · Reveal safe cells (every 4)'}
                 {(gameId === 'candy_crush' || gameId === 'pop_blast') && ' · Match 3+ or pop connected bubbles'}
               </p>
@@ -167,7 +153,7 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
               </div>
               <div className="text-lg font-bold text-slate-800">Thanks{customerName ? `, ${customerName.split(' ')[0]}` : ''}! 🎉</div>
               <p className="text-sm text-slate-600 max-w-xs mx-auto">
-                Your preferences were shared with your representative — they'll tailor the conversation to you.
+                Hope that was fun! Your representative is right here if you have any questions.
               </p>
               <Button variant="primary" className="w-full" onClick={onDismiss}>
                 Continue
@@ -176,39 +162,19 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
           )}
         </div>
 
-        {activeQuestion && (
+        {/* Flash card — pure information, nothing to answer. */}
+        {activeCard && (
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-30">
-            <div className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-sm animate-slide-in">
-              <div className="flex items-center gap-1.5 mb-2">
+            <div className="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-sm animate-slide-in text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-2">
                 <Sparkles size={12} className="text-violet-500" />
-                <span className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide">
-                  Question {activeQuestionIndex + 1} of {questions.length}
-                </span>
+                <span className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide">Did you know?</span>
               </div>
-              <p className="text-sm font-semibold text-slate-800 mb-3">{activeQuestion.text}</p>
-              <div className="space-y-2">
-                {activeQuestion.options.map((opt, i) => (
-                  <button key={opt.id} type="button" onClick={() => answerQuestion(opt.id)} className={styles.optionRow}>
-                    <span className={styles.optionBadge}>{OPTION_LETTERS[i] || '•'}</span>
-                    <span>{opt.text}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Learning payoff — the "Good to know" tip shown after each answer. */}
-        {learnTip && (
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-30">
-            <div className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-sm animate-slide-in">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-lg">💡</span>
-                <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">You just learned something</span>
-              </div>
-              <p className="text-sm text-slate-700 leading-relaxed mb-3">{learnTip.text}</p>
-              <Button variant="primary" className="w-full" onClick={() => finishAnswer(learnTip.nextAnswers, learnTip.isLast)}>
-                {learnTip.isLast ? 'Finish' : 'Got it — keep playing'}
+              <div className="text-4xl mb-2">{activeCard.emoji}</div>
+              <p className="text-sm font-bold text-slate-800 mb-1.5">{activeCard.title}</p>
+              <p className="text-[13px] text-slate-600 leading-relaxed mb-4">{activeCard.fact}</p>
+              <Button variant="primary" className="w-full" onClick={dismissCard}>
+                {cardsShown + 1 >= MAX_CARDS ? 'Nice — finish up' : 'Neat — keep playing'}
               </Button>
             </div>
           </div>

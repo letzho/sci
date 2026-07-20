@@ -90,7 +90,9 @@ export default function ClarityRecapModal({ conversationId, onClose }) {
   function sendToClient() {
     try {
       const socket = getSocket();
-      socket.emit('agent-send-approved', { conversationId, text: recapAsText() });
+      // A recap is always a substantive explanation of the conversation, so it
+      // always qualifies for the customer's "did you understand?" feedback.
+      socket.emit('agent-send-approved', { conversationId, text: recapAsText(), informational: true });
       setSent(true);
       setTimeout(() => setSent(false), 2000);
     } catch {

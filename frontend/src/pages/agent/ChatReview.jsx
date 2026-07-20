@@ -14,6 +14,7 @@ import ProductSignalNudge from '../../components/ProductSignalNudge.jsx';
 import UnderstandingNudge from '../../components/UnderstandingNudge.jsx';
 import ClarityRecapModal from '../../components/ClarityRecapModal.jsx';
 import { mapConversationMessages, parseActivityPayload } from '../../utils/chatMessageFormat.js';
+import { isInformationalReply } from '../../utils/messageClassifier.js';
 import styles from './ChatReview.module.css';
 
 // Colour per suggested-reply tone so the rep can tell them apart at a glance.
@@ -82,18 +83,7 @@ export default function ChatReview() {
       });
       if (lastSurvey) {
         const p = parseActivityPayload(lastSurvey);
-        setSurveyResult({
-          gameChoice: p.gameChoice,
-          repBrief: p.insights?.join('. '),
-          responses: (p.summary || '')
-            .split('|')
-            .map((part) => {
-              const [question, answer] = part.split('->').map((s) => s.trim());
-              return question ? { question, answer: answer || '' } : null;
-            })
-            .filter(Boolean),
-          insights: p.insights || [],
-        });
+        setSurveyResult({ gameChoice: p.gameChoice, cardsViewed: p.cardsViewed || 0 });
       }
       const lastPolicy = loadedMessages
         .slice()
@@ -139,14 +129,13 @@ export default function ChatReview() {
         content: JSON.stringify({
           action: 'completed',
           gameChoice: result.gameChoice,
-          summary: result.summary,
-          insights: result.insights,
+          cardsViewed: result.cardsViewed,
         }),
         createdAt: new Date().toISOString(),
       };
       const enriched = mapConversationMessages([activityMsg])[0];
       setMessages((prev) => {
-        if (prev.some((m) => m.kind === 'game_survey' && m.activity?.title === 'Game survey completed')) return prev;
+        if (prev.some((m) => m.kind === 'game_survey' && m.activity?.title === 'Game completed')) return prev;
         return [...prev, enriched];
       });
     };
@@ -188,16 +177,22 @@ export default function ChatReview() {
   }, [messages]);
 
   function sendApproved() {
-    if (!composeText.trim()) return;
-    // Pass the draft's grounding so the customer sees the source (transparency).
+    const text = composeText.trim();
+    if (!text) return;
+    // Only substantive explanations get a source chip + "did you understand?"
+    // check on the customer's side — a quick "sure" or a question back isn't
+    // an explanation, and asking for acknowledgement on every message is noisy
+    // and undermines the point of the check.
+    const informational = isInformationalReply(text);
     socketRef.current.emit('agent-send-approved', {
       conversationId,
-      text: composeText.trim(),
-      sources: draft?.basedOn?.slice(0, 3) || [],
+      text,
+      informational,
+      sources: informational ? draft?.basedOn?.slice(0, 3) || [] : [],
     });
     setMessages((prev) => [
       ...prev,
-      { id: `local-${Date.now()}`, sender: 'agent', kind: 'approved', content: composeText.trim(), createdAt: new Date().toISOString() },
+      { id: `local-${Date.now()}`, sender: 'agent', kind: 'approved', content: text, createdAt: new Date().toISOString() },
     ]);
     setComposeText('');
     setDraft(null);

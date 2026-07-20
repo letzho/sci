@@ -1,7 +1,7 @@
 const express = require('express');
 const { getComparison, listProductTypes } = require('../data/insuranceComparisons');
 const { getQuiz } = require('../data/quizQuestions');
-const { getNeedsSurvey } = require('../data/needsSurveyQuestions');
+const { getFlashcardDeck } = require('../data/gameFlashcards');
 const { templates, getTemplate } = require('../data/meetingTemplates');
 const quizAgent = require('../agents/quizAgent');
 const objectionAgent = require('../agents/objectionAgent');
@@ -175,9 +175,9 @@ router.get('/quiz', (req, res) => {
   res.json({ quiz: getQuiz(productType || 'life_insurance') });
 });
 
-router.get('/needs-survey', (req, res) => {
+router.get('/game-flashcards', (req, res) => {
   const { productType } = req.query;
-  res.json({ survey: getNeedsSurvey(productType || null) });
+  res.json({ deck: getFlashcardDeck(productType || null) });
 });
 
 router.post('/quiz/grade', async (req, res) => {

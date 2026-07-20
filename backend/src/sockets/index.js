@@ -2,9 +2,8 @@ const db = require('../db/connection');
 const orchestrator = require('../agents/orchestrator');
 const adminAgent = require('../agents/adminAgent');
 const quizAgent = require('../agents/quizAgent');
-const needsSurveyAgent = require('../agents/needsSurveyAgent');
 const { getQuiz } = require('../data/quizQuestions');
-const { getNeedsSurvey } = require('../data/needsSurveyQuestions');
+const { getFlashcardDeck } = require('../data/gameFlashcards');
 const { detectNeeds, NEEDS, getProduct } = require('../data/productKnowledge');
 const { detectConfusion, isMeaningfulUtterance } = require('../services/comprehensionService');
 
@@ -267,13 +266,18 @@ function initSockets(io) {
     // Agent reviewed/edited the draft (or wrote a fresh reply) and sends it on.
     // `sources` (from the draft's grounding) travels with it so the customer can
     // see WHERE the answer came from — transparency that builds trust.
-    socket.on('agent-send-approved', async ({ conversationId, text, sources } = {}) => {
+    socket.on('agent-send-approved', async ({ conversationId, text, sources, informational } = {}) => {
       if (!conversationId || !text || !text.trim()) return;
       await adminAgent.logMessage({ conversationId, sender: 'agent', kind: 'approved', content: text });
       socket.to(conversationId).emit('chat-message', {
         sender: 'agent',
         text,
         sources: Array.isArray(sources) ? sources.slice(0, 3) : [],
+        // Only substantive explanations should prompt the customer for
+        // "did you understand?" feedback — the client decides which messages
+        // qualify (see frontend/src/utils/messageClassifier.js) and this flag
+        // just carries that decision through to the other side.
+        informational: Boolean(informational),
         at: new Date().toISOString(),
       });
     });
@@ -373,40 +377,41 @@ function initSockets(io) {
       emitToClients(conversationId, 'calculator-shared', { result });
     });
 
+    // Play & Learn: a mini-game with product-fact flash cards revealed as the
+    // customer plays. No questions, no answers collected — see
+    // backend/src/data/gameFlashcards.js for why (sponsor feedback: quiz-style
+    // questions during play felt like an interrogation and hurt trust).
     socket.on('game-survey-start', async ({ conversationId, productType } = {}) => {
       if (!conversationId) return;
-      const survey = getNeedsSurvey(productType);
-      emitToClients(conversationId, 'game-survey-start', { survey, productType });
+      const deck = getFlashcardDeck(productType);
+      emitToClients(conversationId, 'game-survey-start', { deck, productType });
       await adminAgent.logMessage({
         conversationId,
         sender: 'agent',
         kind: 'game_survey',
-        content: JSON.stringify({ action: 'started', title: survey.title }),
+        content: JSON.stringify({ action: 'started', title: deck.title }),
       });
     });
 
-    socket.on('game-survey-submit', async ({ conversationId, productType, answers, gameChoice, customerName } = {}) => {
-      if (!conversationId || !answers) return;
+    // Fired when the customer finishes playing. Just an engagement ping — how
+    // many facts they saw and which game they picked — never any personal
+    // preference data.
+    socket.on('game-survey-submit', async ({ conversationId, gameChoice, cardsViewed, customerName } = {}) => {
+      if (!conversationId) return;
       try {
-        const result = await needsSurveyAgent.summarizeNeedsSurvey({
-          productType,
-          answers,
-          gameChoice,
-          customerName,
-        });
+        const result = {
+          gameChoice: gameChoice || 'unknown',
+          cardsViewed: Number(cardsViewed) || 0,
+          customerName: customerName || 'Client',
+          completedAt: new Date().toISOString(),
+        };
         emitToAgents(conversationId, 'game-survey-result', { result });
-        emitToClients(conversationId, 'game-survey-complete', {
-          result: { surveyTitle: result.surveyTitle, repBrief: result.repBrief },
-        });
+        emitToClients(conversationId, 'game-survey-complete', { result });
         await adminAgent.logMessage({
           conversationId,
           sender: 'customer',
           kind: 'game_survey',
-          content: JSON.stringify({
-            action: 'completed',
-            gameChoice,
-            insights: result.insights,
-          }),
+          content: JSON.stringify({ action: 'completed', gameChoice: result.gameChoice, cardsViewed: result.cardsViewed }),
         });
       } catch (err) {
         console.error('[sockets] game-survey-submit error:', err.message);

@@ -89,9 +89,9 @@ export default function ClientCall() {
     if (!socket) return undefined;
     const handleCallEnded = () => navigate('/client');
     const handleQuizStart = ({ quiz }) => setActiveQuiz(quiz);
-    const handleGameSurveyStart = ({ survey }) => {
+    const handleGameSurveyStart = ({ deck }) => {
       setActiveQuiz(null);
-      setActiveGameSurvey(survey);
+      setActiveGameSurvey(deck);
     };
     const handleCoffeeInvite = (payload) => setCoffeeInvite(payload);
     const handleCalculator = ({ result }) => setCalculatorResult(result);
@@ -111,12 +111,11 @@ export default function ClientCall() {
     };
   }, [navigate, socket]);
 
-  function handleGameSurveySubmit(answers, gameChoice) {
+  function handleGameSurveySubmit(gameChoice, cardsViewed) {
     socket.emit('game-survey-submit', {
       conversationId,
-      productType: conversation?.productContext,
-      answers,
       gameChoice,
+      cardsViewed,
       customerName: customerProfile?.name || 'Customer',
     });
   }
@@ -188,7 +187,7 @@ export default function ClientCall() {
     <div className={`min-h-screen bg-slate-900 flex flex-col ${styles.screen}`}>
       {activeGameSurvey && (
         <GameSurveyOverlay
-          survey={activeGameSurvey}
+          deck={activeGameSurvey}
           customerName={customerProfile?.name}
           onSubmit={handleGameSurveySubmit}
           onDismiss={() => setActiveGameSurvey(null)}

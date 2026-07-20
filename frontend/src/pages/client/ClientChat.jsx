@@ -73,13 +73,16 @@ export default function ClientChat() {
     socketRef.current = socket;
     socket.emit('join-room', { conversationId, role: 'client' });
 
-    const handleChatMessage = ({ sender, text: msgText, at, sources }) => {
-      setMessages((prev) => [...prev, { id: `${at}-${Math.random()}`, sender, content: msgText, createdAt: at, sources: sources || [] }]);
+    const handleChatMessage = ({ sender, text: msgText, at, sources, informational }) => {
+      setMessages((prev) => [
+        ...prev,
+        { id: `${at}-${Math.random()}`, sender, content: msgText, createdAt: at, sources: sources || [], informational: Boolean(informational) },
+      ]);
     };
     const handlePolicyShared = ({ message }) => {
       setMessages((prev) => [...prev, parsePolicyMessage(message)]);
     };
-    const handleGameSurveyStart = ({ survey }) => setActiveGameSurvey(survey);
+    const handleGameSurveyStart = ({ deck }) => setActiveGameSurvey(deck);
     socket.on('chat-message', handleChatMessage);
     socket.on('policy-shared', handlePolicyShared);
     socket.on('game-survey-start', handleGameSurveyStart);
@@ -133,12 +136,11 @@ export default function ClientChat() {
     }
   }
 
-  function handleGameSurveySubmit(answers, gameChoice) {
+  function handleGameSurveySubmit(gameChoice, cardsViewed) {
     socketRef.current?.emit('game-survey-submit', {
       conversationId,
-      productType: customerProfile?.policies?.[0]?.productType,
-      answers,
       gameChoice,
+      cardsViewed,
       customerName: customerProfile?.name || 'Customer',
     });
   }
@@ -157,7 +159,7 @@ export default function ClientChat() {
     <>
       {activeGameSurvey && (
         <GameSurveyOverlay
-          survey={activeGameSurvey}
+          deck={activeGameSurvey}
           customerName={customerProfile?.name}
           onSubmit={handleGameSurveySubmit}
           onDismiss={() => setActiveGameSurvey(null)}
@@ -223,7 +225,12 @@ export default function ClientChat() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && <p className="text-xs text-slate-400 text-center mt-6">Say hello to start the conversation.</p>}
         {(() => {
-          const lastAgentId = [...messages].reverse().find((m) => m.sender === 'agent' && m.kind !== 'policy_document')?.id;
+          // Only the latest INFORMATIONAL reply gets the feedback prompt — a
+          // simple "sure" or a question sent after an explanation shouldn't
+          // bump the prompt onto itself, and shouldn't suppress it either.
+          const lastInformationalId = [...messages]
+            .reverse()
+            .find((m) => m.sender === 'agent' && m.kind !== 'policy_document' && m.informational)?.id;
           return messages.map((m) => {
             const isRepText = m.sender === 'agent' && m.kind !== 'policy_document';
             return (
@@ -252,16 +259,19 @@ export default function ClientChat() {
                       {m.content}
                     </div>
 
-                    {/* Source chip — the customer sees WHERE the answer came from. */}
-                    {isRepText && m.sources?.length > 0 && (
+                    {/* Source chip — the customer sees WHERE the answer came from.
+                        Only on informational replies; a quick "sure" has no source. */}
+                    {isRepText && m.informational && m.sources?.length > 0 && (
                       <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
                         <BookOpen size={10} className="shrink-0" />
                         <span className="truncate max-w-[220px]">Based on: {m.sources[0]}</span>
                       </div>
                     )}
 
-                    {/* One-tap clarity feedback under the latest rep message. */}
-                    {isRepText && m.id === lastAgentId && (
+                    {/* One-tap clarity feedback — only under the latest INFORMATIONAL
+                        reply. A simple acknowledgement or a question back from the
+                        rep never needs "did you understand?" confirmation. */}
+                    {isRepText && m.informational && m.id === lastInformationalId && (
                       feedbackGiven[m.id] ? (
                         <div className="mt-1.5 text-[10px] text-emerald-600 font-medium">
                           {feedbackGiven[m.id] === 'got_it' ? '✓ Thanks — glad that was clear!' : "✓ Noted — I'll explain that more clearly"}
