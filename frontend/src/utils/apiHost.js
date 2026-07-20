@@ -1,9 +1,32 @@
+const PLACEHOLDER_HOST_RE = /YOUR-SERVICE|example\.com|your-app|your-service/i;
+
 function isLanDevHost(hostname) {
   if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') return false;
   if (/^192\.168\./.test(hostname)) return true;
   if (/^10\./.test(hostname)) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true;
   return false;
+}
+
+function isLocalPageHost(hostname) {
+  return !hostname || hostname === 'localhost' || hostname === '127.0.0.1' || isLanDevHost(hostname);
+}
+
+function parseEnvUrl(raw, label) {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (PLACEHOLDER_HOST_RE.test(url.hostname)) {
+      console.error(
+        `[ClarityAI] ${label} still uses a placeholder host (${url.hostname}). Set your real Render URL in Vercel env vars, then redeploy.`
+      );
+      return null;
+    }
+    return url.origin + url.pathname.replace(/\/$/, '');
+  } catch {
+    console.error(`[ClarityAI] ${label} is not a valid URL: ${raw}`);
+    return null;
+  }
 }
 
 /**
@@ -43,10 +66,9 @@ function devSameOriginUrls() {
 function warnMissingProductionEnv() {
   if (typeof window === 'undefined') return;
   const host = window.location.hostname;
-  const isLocal = host === 'localhost' || host === '127.0.0.1';
-  if (isLocal || import.meta.env.VITE_API_URL) return;
+  if (isLocalPageHost(host) || import.meta.env.VITE_API_URL) return;
   console.error(
-    '[ClarityAI] VITE_API_URL is not set. On Vercel, add Environment Variables pointing to your Render backend, then redeploy.'
+    '[ClarityAI] VITE_API_URL / VITE_SOCKET_URL are not set. On Vercel, point them at your Render backend (https://YOUR-ACTUAL-SERVICE.onrender.com), then redeploy the frontend.'
   );
 }
 
@@ -54,8 +76,8 @@ export function resolveApiUrl() {
   const proxied = devSameOriginUrls();
   if (proxied) return proxied.api;
 
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl.replace(/\/$/, '');
+  const envUrl = parseEnvUrl(import.meta.env.VITE_API_URL, 'VITE_API_URL');
+  if (envUrl) return envUrl;
   warnMissingProductionEnv();
   return `http://${resolveBackendHost()}:4000/api`;
 }
@@ -64,8 +86,8 @@ export function resolveSocketUrl() {
   const proxied = devSameOriginUrls();
   if (proxied) return proxied.socket;
 
-  const envUrl = import.meta.env.VITE_SOCKET_URL;
-  if (envUrl) return envUrl.replace(/\/$/, '');
+  const envUrl = parseEnvUrl(import.meta.env.VITE_SOCKET_URL, 'VITE_SOCKET_URL');
+  if (envUrl) return envUrl;
   warnMissingProductionEnv();
   return `http://${resolveBackendHost()}:4000`;
 }
