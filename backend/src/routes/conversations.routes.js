@@ -118,6 +118,42 @@ router.get('/', async (req, res) => {
   res.json({ conversations: rows.map(mapConversation) });
 });
 
+/**
+ * Session history for the signed-in rep — every past conversation (active AND
+ * ended) with the customer name and how much was recorded, so nothing is lost
+ * from view once a session is ended. Declared before '/:id' so the literal
+ * path isn't swallowed by the id param route.
+ */
+router.get('/history', requireAuth, async (req, res) => {
+  try {
+    const rows = await db
+      .prepare(
+        `SELECT c.*, cu.name AS customer_name, cu.avatar_emoji AS customer_emoji,
+                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count,
+                (SELECT COUNT(*) FROM guidance_events g WHERE g.conversation_id = c.id) AS guidance_count
+         FROM conversations c
+         LEFT JOIN customers cu ON cu.id = c.customer_id
+         WHERE c.agent_id = ?
+         ORDER BY COALESCE(c.ended_at, c.started_at) DESC
+         LIMIT 100`
+      )
+      .all(req.agent.id);
+
+    res.json({
+      sessions: rows.map((r) => ({
+        ...mapConversation(r),
+        customerName: r.customer_name,
+        customerEmoji: r.customer_emoji,
+        messageCount: Number(r.message_count || 0),
+        guidanceCount: Number(r.guidance_count || 0),
+      })),
+    });
+  } catch (err) {
+    console.error('[conversations.routes] /history error:', err);
+    res.status(500).json({ error: 'Failed to load session history' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   const convo = await db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(req.params.id);
   if (!convo) return res.status(404).json({ error: 'Conversation not found' });

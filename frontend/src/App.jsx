@@ -11,6 +11,7 @@ import ChatReview from './pages/agent/ChatReview.jsx';
 import MetricsDashboard from './pages/agent/MetricsDashboard.jsx';
 import KnowledgeLibrary from './pages/agent/KnowledgeLibrary.jsx';
 import PolicyCompare from './pages/agent/PolicyCompare.jsx';
+import SessionHistory from './pages/agent/SessionHistory.jsx';
 import ProductFit from './pages/agent/ProductFit.jsx';
 import ClientHome from './pages/client/ClientHome.jsx';
 import ClientCall from './pages/client/ClientCall.jsx';
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="knowledge" element={<KnowledgeLibrary />} />
         <Route path="compare" element={<PolicyCompare />} />
         <Route path="product-fit" element={<ProductFit />} />
+        <Route path="history" element={<SessionHistory />} />
         <Route path="customers/:customerId/plan" element={<CustomerPlan />} />
         <Route path="session/:conversationId/face-to-face" element={<FaceToFace />} />
         <Route path="session/:conversationId/virtual-call" element={<VirtualCall />} />

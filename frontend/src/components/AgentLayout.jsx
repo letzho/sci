@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, LogOut, BarChart3, BookOpen, GitCompare, Compass } from 'lucide-react';
+import { LayoutDashboard, LogOut, BarChart3, BookOpen, GitCompare, Compass, History } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import api from '../api/client';
 import Logo from './Logo.jsx';
@@ -49,6 +49,16 @@ export default function AgentLayout() {
               }
             >
               <BarChart3 size={16} /> Impact
+            </NavLink>
+            <NavLink
+              to="/agent/history"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium ${styles.navLink} ${
+                  isActive ? `bg-brand-50 text-brand-700 ${styles.navLinkActive}` : 'text-slate-500 hover:bg-slate-50'
+                }`
+              }
+            >
+              <History size={16} /> History
             </NavLink>
             <NavLink
               to="/agent/product-fit"
