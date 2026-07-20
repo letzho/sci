@@ -14,6 +14,7 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
   const [paused, setPaused] = useState(false);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [learnTip, setLearnTip] = useState(null); // { text, nextAnswers, isLast }
   const [complete, setComplete] = useState(false);
   const nextQuestionRef = useRef(0);
   const questionsRef = useRef([]);
@@ -57,13 +58,27 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
     const nextAnswers = { ...answers, [q.id]: optionId };
     setAnswers(nextAnswers);
     setActiveQuestionIndex(null);
-    setPaused(false);
 
-    const answeredCount = Object.keys(nextAnswers).length;
-    if (answeredCount >= questions.length) {
+    const isLast = Object.keys(nextAnswers).length >= questions.length;
+
+    // Reveal the "Good to know" learning tip as the reward for answering — the
+    // learning payoff that makes sharing feel comfortable. Stay paused until the
+    // customer taps to continue; only then resume the game / finish.
+    if (q.learn) {
+      setLearnTip({ text: q.learn, nextAnswers, isLast });
+    } else {
+      finishAnswer(nextAnswers, isLast);
+    }
+  }
+
+  function finishAnswer(nextAnswers, isLast) {
+    setLearnTip(null);
+    if (isLast) {
       setComplete(true);
       setPaused(true);
       onSubmit(nextAnswers, gameId, () => {});
+    } else {
+      setPaused(false);
     }
   }
 
@@ -81,7 +96,7 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
             </span>
             <div>
               <div className="text-sm font-bold text-slate-800">{survey.title}</div>
-              <div className="text-[10px] text-slate-500">Play &amp; answer — {questions.length} quick questions</div>
+              <div className="text-[10px] text-slate-500">Play, learn &amp; share — {questions.length} quick questions, each with a tip</div>
             </div>
           </div>
           {!complete && (
@@ -179,6 +194,22 @@ export default function GameSurveyOverlay({ survey: surveyProp, customerName, on
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Learning payoff — the "Good to know" tip shown after each answer. */}
+        {learnTip && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+            <div className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-sm animate-slide-in">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-lg">💡</span>
+                <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">You just learned something</span>
+              </div>
+              <p className="text-sm text-slate-700 leading-relaxed mb-3">{learnTip.text}</p>
+              <Button variant="primary" className="w-full" onClick={() => finishAnswer(learnTip.nextAnswers, learnTip.isLast)}>
+                {learnTip.isLast ? 'Finish' : 'Got it — keep playing'}
+              </Button>
             </div>
           </div>
         )}

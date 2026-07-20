@@ -62,13 +62,21 @@ export function AuthProvider({ children }) {
     return res.data.agent;
   }, []);
 
+  const register = useCallback(async ({ name, email, password }) => {
+    const res = await api.post('/auth/register', { name, email, password });
+    localStorage.setItem('sci_agent_token', res.data.token);
+    sessionStorage.removeItem('sci_session_expired');
+    setAgent(res.data.agent);
+    return res.data.agent;
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem('sci_agent_token');
     setAgent(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ agent, loading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ agent, loading, login, register, logout }}>{children}</AuthContext.Provider>
   );
 }
 

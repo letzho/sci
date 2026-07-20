@@ -265,10 +265,48 @@ function initSockets(io) {
     });
 
     // Agent reviewed/edited the draft (or wrote a fresh reply) and sends it on.
-    socket.on('agent-send-approved', async ({ conversationId, text } = {}) => {
+    // `sources` (from the draft's grounding) travels with it so the customer can
+    // see WHERE the answer came from — transparency that builds trust.
+    socket.on('agent-send-approved', async ({ conversationId, text, sources } = {}) => {
       if (!conversationId || !text || !text.trim()) return;
       await adminAgent.logMessage({ conversationId, sender: 'agent', kind: 'approved', content: text });
-      socket.to(conversationId).emit('chat-message', { sender: 'agent', text, at: new Date().toISOString() });
+      socket.to(conversationId).emit('chat-message', {
+        sender: 'agent',
+        text,
+        sources: Array.isArray(sources) ? sources.slice(0, 3) : [],
+        at: new Date().toISOString(),
+      });
+    });
+
+    // Customer tapped a one-tap clarity response ("Got it" / "Still unclear" /
+    // "Explain simpler") under a message. Two things happen:
+    //   1) the rep is clearly notified (confirmed understanding, not guessed), and
+    //   2) for "unclear"/"simpler" the AI immediately prepares simpler re-explanation
+    //      drafts so the rep has an answer ready — no dead-end signal.
+    socket.on('clarity-feedback', async ({ conversationId, feedback, text } = {}) => {
+      if (!conversationId || !feedback) return;
+
+      // Broadcast the notice to every agent socket in the room (robust — doesn't
+      // depend on a single stored socket id that may be stale after a reconnect).
+      const sockets = await io.in(conversationId).fetchSockets();
+      const agentSockets = sockets.filter((s) => s.data.role === 'agent');
+      agentSockets.forEach((s) => s.emit('clarity-feedback', { feedback, text, at: new Date().toISOString() }));
+
+      if (feedback === 'got_it' || !agentSockets.length) return;
+
+      // Prepare simpler re-explanation options for the rep (clarify mode kicks in
+      // because the synthetic message reads as a clarification request).
+      try {
+        const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
+        const draft = await orchestrator.getChatDraft({
+          customerMessage: "Can you explain that in simpler terms? I didn't understand.",
+          productType: convo?.product_context,
+          conversationId,
+        });
+        agentSockets.forEach((s) => s.emit('chat-draft', { draft, clarityTriggered: feedback }));
+      } catch (err) {
+        console.error('[sockets] clarity-feedback draft error:', err.message);
+      }
     });
 
     // ---- Virtual call tools: quiz, coffee chat, calculator share ----

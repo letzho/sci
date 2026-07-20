@@ -147,7 +147,15 @@ Rules you must always follow:
 - Write in short, clear, plain English a customer can understand in a live conversation.
 - If none of the talking points or web search results clearly answer the question, do NOT deflect the customer to "check with a supervisor" or "look at the product summary" - that is not an acceptable answer. Instead, briefly share whatever related fact you do have (if any), then ask ONE specific clarifying question that would let the rep pull up exactly what's needed (e.g. which benefit, which policy, which scenario). Keep the conversation moving forward.
 - When the customer asks to compare products or plans and talking points labelled "from URL" contain specific plan names, you MUST name those plans and describe concrete differences from that material (coverage types, term, riders, etc.). Do NOT reply with only generic comparison factors (premium, sum assured, policy term) without citing the named plans from the reference.
-- Keep responses to 2-3 sentences.`;
+
+TRUST RULES - how to be trustworthy, not just pleasant. Customers trust honesty and substance, not vague reassurance:
+- ANSWER THE ACTUAL QUESTION FIRST. If they ask "will I be covered?", the first sentence must address coverage honestly ("Honestly, it depends - here is how it actually works...") before any empathy or follow-up question. Never lead with only sympathy.
+- BANNED as complete answers: "you may still qualify", "coverage can vary", "it depends on the insurer" with nothing more, or any reply that is only reassurance plus a question back. If you state that something varies, you MUST explain HOW it varies in the same reply.
+- For eligibility questions with a health condition (e.g. existing cancer): be straight about the real process - the insurer's underwriters decide after reviewing medical details, and the typical outcomes are: accepted at standard terms, accepted with a premium loading or an exclusion (e.g. that condition not covered), postponed until treatment/remission milestones, or declined. Naming these outcomes honestly IS the trust-builder. Then note which grounding facts apply (e.g. some insurers offer plans for ex-cancer patients, per the material given).
+- BE TRANSPARENT ABOUT LIMITS: say plainly what cannot be promised in chat ("I won't promise an outcome before underwriting - I'd rather be straight with you than guess"). Honesty about uncertainty is compliant AND trust-building; false certainty is neither.
+- End with a concrete, genuinely useful next step the rep can do (e.g. "I can check which insurers' plans in our materials accept early-stage cases so you know your options"), not a vague "share more?".
+- VOICE: you are drafting words the representative will send AS THEMSELVES. Write in first person ("I can check...", "I'll walk you through..."). NEVER say "your representative can..." or "ask your representative" - that reads as deflection from the very person speaking.
+- Keep responses to 3-4 short sentences - substance first, warmth around it.`;
 
 /**
  * Produces a short, plain-English explainer grounded in the matched
@@ -196,6 +204,8 @@ async function draftChatReply({
   policyContext = null,
   recentHistory = [],
   compareQuestion = false,
+  clarifyMode = false,
+  messageToSimplify = null,
 }) {
   if (!isEnabled()) return null;
   try {
@@ -208,12 +218,15 @@ async function draftChatReply({
     const compareNote = compareQuestion
       ? '\nIMPORTANT: This is a product-comparison question. Prioritize talking points marked [from URL] or comparison-table excerpts. Name specific plans (e.g. PRUActive Protect, PRUCancer 360) and their differences — never give only a generic "factors to compare" answer.\n'
       : '';
+    const clarifyNote = clarifyMode
+      ? `\nCLARIFICATION MODE: The customer did not understand your previous reply. Re-explain it in much simpler, plainer words — same facts, short everyday sentences, an analogy if useful. Do NOT change the topic or ask what they meant. Your previous reply was:\n"""${messageToSimplify}"""\n`
+      : '';
 
     const completion = await withTimeout(
       openai.chat.completions.create({
         model: MODEL,
         temperature: 0.4,
-        max_tokens: compareQuestion ? 280 : 200,
+        max_tokens: compareQuestion ? 280 : 220,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
@@ -224,7 +237,7 @@ ${history}
 Customer uploaded policy document (PRIMARY grounding when present):
 ${policyDoc}
 Customer's latest chat message: "${customerMessage}"
-${compareNote}Talking points available:
+${clarifyNote}${compareNote}Talking points available:
 ${approved}
 Web search results available:
 ${web}
@@ -239,6 +252,88 @@ Draft a short, warm chat reply the rep can review, edit and send. When a policy 
     return completion?.choices?.[0]?.message?.content?.trim() || null;
   } catch (err) {
     console.warn('[openaiService] draftChatReply fallback to rule engine only:', err.message);
+    return null;
+  }
+}
+
+const REPLY_OPTIONS_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+You will now produce THREE alternative draft replies for the representative to choose from — same facts, different tone — so they can pick what best fits this customer. Every option must build TRUST: honest and substantive first, warm around it. Never pushy, never over-promising, never recommending or selling.
+The three tones are:
+1. "Warm & reassuring" — empathetic framing, but STILL answers the actual question with the honest substance (the empathy wraps the facts, it never replaces them).
+2. "Clear & factual" — concise and direct, leads with the key fact in plain English.
+3. "Consultative" — same honest substance, then ends with one genuinely useful next step or clarifying question.
+Rules: ALL THREE must obey the TRUST RULES above — each must answer the actual question with real substance (e.g. for eligibility with a health condition: name the realistic underwriting outcomes and what cannot be promised). A reply that is only sympathy plus "tell me more" is a FAILED option in any tone. All three stay grounded ONLY in the given talking points / document / web results, all 3-4 short sentences, all compliance-safe. Do not invent facts to differentiate them — only the wording/tone changes.
+Respond with ONLY a JSON object: {"options":[{"tone":"Warm & reassuring","text":"..."},{"tone":"Clear & factual","text":"..."},{"tone":"Consultative","text":"..."}]}`;
+
+/**
+ * Produces up to 3 tonal variations of a chat reply for the rep to choose from.
+ * Same grounding as draftChatReply; only tone differs. Returns an array of
+ * {tone, text} or null on failure (caller falls back to the single draft).
+ */
+async function draftReplyOptions({
+  customerMessage,
+  productType,
+  talkingPoints,
+  webResults,
+  policyContext = null,
+  recentHistory = [],
+  compareQuestion = false,
+  clarifyMode = false,
+  messageToSimplify = null,
+}) {
+  if (!isEnabled()) return null;
+  try {
+    const openai = getClient();
+    const approved = formatTalkingPointsForPrompt(talkingPoints);
+    const web = formatWebResultsForPrompt(webResults);
+    const policyDoc = formatPolicyContextForPrompt(policyContext);
+    const history = formatRecentHistoryForPrompt(recentHistory, customerMessage);
+    const compareNote = compareQuestion
+      ? '\nIMPORTANT: comparison question — name specific plans from the reference material, never a generic "factors to compare" answer.\n'
+      : '';
+    const clarifyNote = clarifyMode
+      ? `\nCLARIFICATION MODE: The customer did not understand your previous reply and is asking what you meant. Your previous reply was:\n"""${messageToSimplify}"""\nRe-explain THAT message in much simpler, plainer words — same facts, short everyday sentences, and a relatable analogy if it helps. Do NOT introduce a new topic, do NOT ask them what they meant, and do NOT just repeat the same wording. Each of the three options should be a genuinely simpler re-explanation.\n`
+      : '';
+
+    const completion = await withTimeout(
+      openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.5,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: REPLY_OPTIONS_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `Product context: ${productType || 'general'}
+Recent conversation:
+${history}
+Customer uploaded policy document (primary grounding when present):
+${policyDoc}
+Customer's latest message: "${customerMessage}"
+${clarifyNote}${compareNote}Talking points available:
+${approved}
+Web search results available:
+${web}
+
+Return the JSON object with three tonal reply options the rep can pick from.`,
+          },
+        ],
+      }),
+      TIMEOUT_MS
+    );
+
+    const raw = completion?.choices?.[0]?.message?.content?.trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.options)) return null;
+    const options = parsed.options
+      .filter((o) => o && typeof o.text === 'string' && o.text.trim())
+      .map((o) => ({ tone: typeof o.tone === 'string' ? o.tone : 'Suggested', text: o.text.trim() }));
+    return options.length ? options : null;
+  } catch (err) {
+    console.warn('[openaiService] draftReplyOptions failed, falling back to single draft:', err.message);
     return null;
   }
 }
@@ -706,4 +801,4 @@ Max 5 recommendations. Only use the 5 product types listed.`;
   }
 }
 
-module.exports = { isEnabled, enhanceGuidance, draftChatReply, interpretPolicy, extractPolicyBenefitTable, comparePolicyDocuments, generateClientBrief, generateClarityRecap, translateRecap, embedText, transcribeAudio, synthesizeSpeech, generatePortfolioRecommendations };
+module.exports = { isEnabled, enhanceGuidance, draftChatReply, draftReplyOptions, interpretPolicy, extractPolicyBenefitTable, comparePolicyDocuments, generateClientBrief, generateClarityRecap, translateRecap, embedText, transcribeAudio, synthesizeSpeech, generatePortfolioRecommendations };

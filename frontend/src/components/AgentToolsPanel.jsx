@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { BookOpenCheck, Calculator, Coffee, GitCompare, DollarSign, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Gamepad2, CalendarDays, Compass } from 'lucide-react';
+import { BookOpenCheck, Calculator, Coffee, GitCompare, ShieldAlert, ShieldCheck, Sparkles, BarChart3, ClipboardList, Gamepad2, CalendarDays, Compass } from 'lucide-react';
 import CustomerPlanPanel from './CustomerPlanPanel.jsx';
 import GameSurveyPanel from './gameSurvey/GameSurveyPanel.jsx';
 import AppointmentScheduler from './AppointmentScheduler.jsx';
 import api from '../api/client';
 import FinancialCalculator from './FinancialCalculator.jsx';
-import PremiumPredictor from './PremiumPredictor.jsx';
 import InsuranceComparison from './InsuranceComparison.jsx';
 import PolicyComparison from './PolicyComparison.jsx';
 import ProductFitGuide from './ProductFitGuide.jsx';
@@ -21,7 +20,6 @@ const TABS = [
   { key: 'compliance', label: 'Compliance', icon: ShieldCheck },
   { key: 'explain', label: 'Explain', icon: BarChart3 },
   { key: 'calculator', label: 'Calculator', icon: Calculator },
-  { key: 'premium', label: 'Premium', icon: DollarSign },
   { key: 'fit', label: 'Fit Guide', icon: Compass },
   { key: 'compare', label: 'Compare', icon: GitCompare },
   { key: 'quiz', label: 'Quiz', icon: BookOpenCheck },
@@ -154,7 +152,6 @@ export default function AgentToolsPanel({
 
       {tab === 'calculator' && <FinancialCalculator onShare={shareCalculator} />}
 
-      {tab === 'premium' && <PremiumPredictor onShare={shareCalculator} />}
 
       {tab === 'fit' && <ProductFitGuide customerId={customerId} onSpeak={onSpeak} />}
 

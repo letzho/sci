@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, LogOut, BarChart3, BookOpen, DollarSign, GitCompare, Compass } from 'lucide-react';
+import { LayoutDashboard, LogOut, BarChart3, BookOpen, GitCompare, Compass } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import api from '../api/client';
 import Logo from './Logo.jsx';
 import PersonAvatar from './PersonAvatar.jsx';
-import PremiumPredictorModal from './PremiumPredictorModal.jsx';
 import XPBar from './XPBar.jsx';
 import XPBurstOverlay from './XPBurstOverlay.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -15,7 +14,6 @@ export default function AgentLayout() {
   const { agent, logout } = useAuth();
   const { bonusXp } = useGamificationBonus();
   const [gamification, setGamification] = useState(null);
-  const [premiumOpen, setPremiumOpen] = useState(false);
 
   useEffect(() => {
     api
@@ -82,23 +80,8 @@ export default function AgentLayout() {
             >
               <BookOpen size={16} /> Knowledge
             </NavLink>
-            <button
-              type="button"
-              onClick={() => setPremiumOpen(true)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-brand-50 hover:text-brand-700 ${styles.navLink}`}
-            >
-              <DollarSign size={16} /> Predict premium
-            </button>
           </nav>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setPremiumOpen(true)}
-              className="md:hidden flex items-center gap-1 px-2.5 py-2 rounded-lg text-sm font-medium text-brand-700 bg-brand-50"
-              title="Predict premium"
-            >
-              <DollarSign size={16} />
-            </button>
             <XPBar gamification={gamification} />
             <div className="flex items-center gap-2">
               <PersonAvatar name={agent?.name} emoji={agent?.avatarEmoji} className="h-9 w-9 bg-brand-50 text-base hidden sm:flex" />
@@ -118,9 +101,8 @@ export default function AgentLayout() {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-5 py-6">
-        <Outlet context={{ openPremiumPredictor: () => setPremiumOpen(true) }} />
+        <Outlet />
       </main>
-      {premiumOpen && <PremiumPredictorModal onClose={() => setPremiumOpen(false)} />}
     </div>
   );
 }

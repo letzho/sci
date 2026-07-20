@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
-import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, DollarSign, ClipboardList, FileSearch } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, ClipboardList, FileSearch, RotateCcw } from 'lucide-react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { mergeGamification, useGamificationBonus } from '../../context/GamificationBonusContext.jsx';
 import FlightSimulatorModal from '../../components/FlightSimulatorModal.jsx';
 import ClientBriefModal from '../../components/ClientBriefModal.jsx';
+import FirstRunTour from '../../components/FirstRunTour.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import BadgeGallery from '../../components/BadgeGallery.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
@@ -24,7 +25,6 @@ export default function Dashboard() {
   const { agent, logout } = useAuth();
   const { bonusXp } = useGamificationBonus();
   const navigate = useNavigate();
-  const { openPremiumPredictor } = useOutletContext() || {};
   const [customers, setCustomers] = useState([]);
   const [activeConvos, setActiveConvos] = useState([]);
   const [gamification, setGamification] = useState(null);
@@ -54,6 +54,20 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const [resetting, setResetting] = useState(false);
+  async function resetDemoData() {
+    if (!window.confirm('Reset your demo sessions? This clears your conversations and chat history (customers and policies stay). Other testers are not affected.')) return;
+    setResetting(true);
+    try {
+      await api.post('/conversations/reset');
+      await load();
+    } catch (err) {
+      console.error('Reset failed:', err);
+    } finally {
+      setResetting(false);
+    }
+  }
 
   async function startSession(customer, channelKey) {
     if (!agent) return;
@@ -99,25 +113,22 @@ export default function Dashboard() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Pick a customer and channel to start a guided session.</p>
         </div>
-        <button onClick={load} className={`text-slate-400 hover:text-slate-600 ${styles.refreshBtn}`} title="Refresh">
-          <RefreshCw size={16} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={resetDemoData}
+            disabled={resetting}
+            className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 disabled:opacity-50"
+            title="Reset your demo sessions"
+          >
+            <RotateCcw size={13} /> {resetting ? 'Resetting…' : 'Reset demo'}
+          </button>
+          <button onClick={load} className={`text-slate-400 hover:text-slate-600 ${styles.refreshBtn}`} title="Refresh">
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
-      <Card className="p-4 flex flex-wrap items-center justify-between gap-3 border-brand-100 bg-gradient-to-r from-brand-50/80 to-white">
-        <div>
-          <div className="flex items-center gap-2 text-brand-800">
-            <DollarSign size={16} />
-            <h2 className="text-sm font-semibold">Premium predictor</h2>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 max-w-md">
-            Estimate annual premium from age, BMI, smoker status, and region — useful before or during any client conversation.
-          </p>
-        </div>
-        <Button onClick={() => openPremiumPredictor?.()}>
-          <DollarSign size={15} /> Predict premium
-        </Button>
-      </Card>
+      <FirstRunTour />
 
       {gamification && (
         <Card className={`p-5 overflow-hidden relative ${styles.progressCard}`}>

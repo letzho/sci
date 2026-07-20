@@ -44,6 +44,33 @@ function isMeaningfulUtterance(text) {
   return trimmed.split(/\s+/).filter(Boolean).length >= 3;
 }
 
+// Phrases that refer BACK to the rep's previous message ("clarify what you just
+// said") — as opposed to a genuine new question like "what is an ILP?". These
+// switch the drafter into "re-explain your last message simpler" mode.
+const CLARIFY_BACK_REFERENCES = [
+  'what do you mean', 'what does that mean', "what's that mean", 'whats that mean',
+  'explain that again', 'explain again', 'explain that', 'say that again', 'come again', 'repeat that',
+  'you lost me', 'lost me', 'in simpler terms', 'explain simpler', 'simpler terms', 'more simply',
+  'plain english', 'wait what', 'sorry what', 'makes no sense', "doesn't make sense", 'not clear', 'unclear',
+];
+
+/**
+ * True when the customer is asking the rep to clarify their PREVIOUS message
+ * (not asking a new, self-contained question). Used to switch the chat drafter
+ * into re-explanation mode so the reply actually addresses their confusion.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isClarifyRequest(text) {
+  if (!text || !text.trim()) return false;
+  const t = ` ${text.toLowerCase().trim()} `;
+  if (CLARIFY_BACK_REFERENCES.some((p) => t.includes(p))) return true;
+  // Short generic confusion with no named concept to explain ("huh", "I'm confused").
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (words <= 5 && /\b(huh|confused|confusing|understand|lost|repeat)\b/.test(t)) return true;
+  return false;
+}
+
 /**
  * @param {string} text  the customer's latest utterance / message
  * @returns {{confused: boolean, strength: 'high'|'low', matched: string[]}}
@@ -111,4 +138,4 @@ async function buildRecapContext(db, conversationId) {
   };
 }
 
-module.exports = { detectConfusion, isMeaningfulUtterance, buildRecapContext, CONFUSION_PHRASES };
+module.exports = { detectConfusion, isMeaningfulUtterance, isClarifyRequest, buildRecapContext, CONFUSION_PHRASES };

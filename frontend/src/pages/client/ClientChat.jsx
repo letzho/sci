@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, FileText, Loader2, Paperclip, Send } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, FileText, Loader2, Paperclip, Send, ShieldCheck, BookOpen } from 'lucide-react';
 import api from '../../api/client';
 import { getSocket } from '../../socket.js';
 import GameSurveyOverlay from '../../components/gameSurvey/GameSurveyOverlay.jsx';
@@ -8,6 +8,7 @@ import PhoneFrame from '../../components/PhoneFrame.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import { LoadingSpinner } from '../../components/ui.jsx';
 import { mapConversationMessages } from '../../utils/chatMessageFormat.js';
+import { fetchClientAgent } from '../../utils/clientAgent.js';
 import styles from './ClientChat.module.css';
 
 // 'policy_document' messages carry a JSON-encoded payload in `content`
@@ -44,6 +45,7 @@ export default function ClientChat() {
   const [uploadError, setUploadError] = useState(null);
   const [activeGameSurvey, setActiveGameSurvey] = useState(null);
   const [customerProfile, setCustomerProfile] = useState(null);
+  const [feedbackGiven, setFeedbackGiven] = useState({}); // messageId -> feedback
   const socketRef = useRef(null);
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -57,7 +59,7 @@ export default function ClientChat() {
           { forClient: true }
         ).map(parsePolicyMessage)
       );
-      const agentRes = await api.get('/agents/primary');
+      const agentRes = await fetchClientAgent();
       setAgent(agentRes.data.agent);
       const custRes = await api.get(`/customers/${convoRes.data.conversation.customerId}`);
       setCustomerProfile(custRes.data.customer);
@@ -71,8 +73,8 @@ export default function ClientChat() {
     socketRef.current = socket;
     socket.emit('join-room', { conversationId, role: 'client' });
 
-    const handleChatMessage = ({ sender, text: msgText, at }) => {
-      setMessages((prev) => [...prev, { id: `${at}-${Math.random()}`, sender, content: msgText, createdAt: at }]);
+    const handleChatMessage = ({ sender, text: msgText, at, sources }) => {
+      setMessages((prev) => [...prev, { id: `${at}-${Math.random()}`, sender, content: msgText, createdAt: at, sources: sources || [] }]);
     };
     const handlePolicyShared = ({ message }) => {
       setMessages((prev) => [...prev, parsePolicyMessage(message)]);
@@ -98,6 +100,15 @@ export default function ClientChat() {
     socketRef.current.emit('chat-message', { conversationId, sender: 'customer', text: text.trim() });
     setMessages((prev) => [...prev, { id: `local-${Date.now()}`, sender: 'customer', content: text.trim(), createdAt: new Date().toISOString() }]);
     setText('');
+  }
+
+  // One-tap clarity response under a rep message. Tells the rep whether the
+  // customer understood (or wants it simpler) — engaging, and it builds trust
+  // because the customer is heard, not just talked at. For "unclear"/"simpler"
+  // the backend notifies the rep AND prepares simpler re-explanation drafts.
+  function sendClarityFeedback(msg, feedback) {
+    socketRef.current?.emit('clarity-feedback', { conversationId, feedback, text: msg.content });
+    setFeedbackGiven((prev) => ({ ...prev, [msg.id]: feedback }));
   }
 
   async function handlePolicyUpload(file) {
@@ -201,35 +212,80 @@ export default function ClientChat() {
         <div className="font-semibold text-sm text-slate-800">{agent?.name}</div>
       </div>
 
+      {/* Trust & transparency banner — sets an honest frame from the first second. */}
+      <div className="flex items-start gap-1.5 px-4 py-2 bg-emerald-50/70 border-b border-emerald-100">
+        <ShieldCheck size={13} className="text-emerald-600 mt-0.5 shrink-0" />
+        <p className="text-[10px] text-emerald-800 leading-snug">
+          {agent?.name?.split(' ')[0] || 'Your representative'} reviews every reply personally. Answers use only approved information, shown with their source — and nothing is ever sold to you automatically.
+        </p>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && <p className="text-xs text-slate-400 text-center mt-6">Say hello to start the conversation.</p>}
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
-            {m.kind === 'policy_document' ? (
-              <div
-                className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm flex items-center gap-2 ${
-                  m.sender === 'customer' ? `bg-brand-600 text-white ${styles.bubbleMine}` : `bg-slate-100 text-slate-700 ${styles.bubbleTheirs}`
-                }`}
-              >
-                <FileText size={16} className="shrink-0" />
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{m.policy?.filename || 'Policy document'}</div>
-                  <div className={`text-[11px] ${m.sender === 'customer' ? 'text-white/70' : 'text-slate-400'}`}>
-                    {m.policy?.status === 'failed' ? 'Could not read this PDF' : 'Shared with your representative'}
+        {(() => {
+          const lastAgentId = [...messages].reverse().find((m) => m.sender === 'agent' && m.kind !== 'policy_document')?.id;
+          return messages.map((m) => {
+            const isRepText = m.sender === 'agent' && m.kind !== 'policy_document';
+            return (
+              <div key={m.id} className={`flex ${m.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                {m.kind === 'policy_document' ? (
+                  <div
+                    className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm flex items-center gap-2 ${
+                      m.sender === 'customer' ? `bg-brand-600 text-white ${styles.bubbleMine}` : `bg-slate-100 text-slate-700 ${styles.bubbleTheirs}`
+                    }`}
+                  >
+                    <FileText size={16} className="shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{m.policy?.filename || 'Policy document'}</div>
+                      <div className={`text-[11px] ${m.sender === 'customer' ? 'text-white/70' : 'text-slate-400'}`}>
+                        {m.policy?.status === 'failed' ? 'Could not read this PDF' : 'Shared with your representative'}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className={`max-w-[80%] ${m.sender === 'customer' ? 'items-end' : 'items-start'} flex flex-col`}>
+                    <div
+                      className={`rounded-2xl px-3.5 py-2 text-sm ${
+                        m.sender === 'customer' ? `bg-brand-600 text-white ${styles.bubbleMine}` : `bg-slate-100 text-slate-700 ${styles.bubbleTheirs}`
+                      }`}
+                    >
+                      {m.content}
+                    </div>
+
+                    {/* Source chip — the customer sees WHERE the answer came from. */}
+                    {isRepText && m.sources?.length > 0 && (
+                      <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                        <BookOpen size={10} className="shrink-0" />
+                        <span className="truncate max-w-[220px]">Based on: {m.sources[0]}</span>
+                      </div>
+                    )}
+
+                    {/* One-tap clarity feedback under the latest rep message. */}
+                    {isRepText && m.id === lastAgentId && (
+                      feedbackGiven[m.id] ? (
+                        <div className="mt-1.5 text-[10px] text-emerald-600 font-medium">
+                          {feedbackGiven[m.id] === 'got_it' ? '✓ Thanks — glad that was clear!' : "✓ Noted — I'll explain that more clearly"}
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <button type="button" onClick={() => sendClarityFeedback(m, 'got_it')} className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100">
+                            👍 Got it
+                          </button>
+                          <button type="button" onClick={() => sendClarityFeedback(m, 'unclear')} className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100">
+                            🤔 Still unclear
+                          </button>
+                          <button type="button" onClick={() => sendClarityFeedback(m, 'simpler')} className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200">
+                            Explain simpler
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div
-                className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
-                  m.sender === 'customer' ? `bg-brand-600 text-white ${styles.bubbleMine}` : `bg-slate-100 text-slate-700 ${styles.bubbleTheirs}`
-                }`}
-              >
-                {m.content}
-              </div>
-            )}
-          </div>
-        ))}
+            );
+          });
+        })()}
         <div ref={bottomRef} />
       </div>
     </PhoneFrame>

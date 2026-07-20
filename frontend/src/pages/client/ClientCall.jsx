@@ -14,6 +14,7 @@ import Logo from '../../components/Logo.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import { Button, Card, LoadingSpinner } from '../../components/ui.jsx';
 import { attachVideoStream } from '../../utils/videoStream.js';
+import { fetchClientAgent } from '../../utils/clientAgent.js';
 import styles from './ClientCall.module.css';
 
 const STATUS_LABEL = {
@@ -60,7 +61,7 @@ export default function ClientCall() {
       const convoRes = await api.get(`/conversations/${conversationId}`);
       setConversation(convoRes.data.conversation);
       const [agentsRes, custRes] = await Promise.all([
-        api.get('/agents/primary'),
+        fetchClientAgent(),
         api.get(`/customers/${convoRes.data.conversation.customerId}`),
       ]);
       setAgent(agentsRes.data.agent);

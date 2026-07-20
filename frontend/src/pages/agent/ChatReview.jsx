@@ -16,6 +16,14 @@ import ClarityRecapModal from '../../components/ClarityRecapModal.jsx';
 import { mapConversationMessages, parseActivityPayload } from '../../utils/chatMessageFormat.js';
 import styles from './ChatReview.module.css';
 
+// Colour per suggested-reply tone so the rep can tell them apart at a glance.
+const TONE_STYLES = {
+  'Warm & reassuring': 'bg-rose-50 text-rose-600',
+  'Clear & factual': 'bg-sky-50 text-sky-600',
+  Consultative: 'bg-violet-50 text-violet-600',
+  'Suggested reply': 'bg-slate-100 text-slate-500',
+};
+
 // 'policy_document' messages carry a JSON-encoded payload in `content`
 // (see backend/src/routes/policyUploads.routes.js) rather than plain text -
 // this unpacks it once so rendering can stay simple.
@@ -47,12 +55,14 @@ export default function ChatReview() {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState(null);
   const [composeText, setComposeText] = useState('');
+  const [selectedTone, setSelectedTone] = useState(null);
   const [loading, setLoading] = useState(true);
   const [policyAnalysis, setPolicyAnalysis] = useState(null);
   const [socket, setSocket] = useState(null);
   const [surveyResult, setSurveyResult] = useState(null);
   const [productSignal, setProductSignal] = useState(null);
   const [confusion, setConfusion] = useState(null);
+  const [clarityAck, setClarityAck] = useState(null);
   const [recapOpen, setRecapOpen] = useState(false);
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
@@ -108,7 +118,9 @@ export default function ChatReview() {
     };
     const handleChatDraft = ({ draft: incomingDraft }) => {
       setDraft(incomingDraft);
-      setComposeText(incomingDraft.draftReply);
+      const first = incomingDraft.draftOptions?.[0];
+      setComposeText(first?.text || incomingDraft.draftReply || '');
+      setSelectedTone(first?.tone || null);
     };
     const handlePolicyShared = ({ message }) => {
       const parsed = parsePolicyMessage(message);
@@ -141,6 +153,15 @@ export default function ChatReview() {
 
     const handleProductSignal = ({ signal }) => setProductSignal(signal);
     const handleUnderstanding = ({ confusion: c }) => setConfusion(c);
+    const handleClarityFeedback = ({ feedback, text }) => {
+      if (feedback === 'got_it') {
+        setClarityAck({ text });
+        setTimeout(() => setClarityAck(null), 4000);
+      } else {
+        // 'unclear' or 'simpler' — surface as a confusion nudge with the customer's actual ask.
+        setConfusion({ text, strength: 'high', feedback });
+      }
+    };
 
     sock.on('chat-message', handleChatMessage);
     sock.on('chat-draft', handleChatDraft);
@@ -148,6 +169,7 @@ export default function ChatReview() {
     sock.on('game-survey-result', handleGameSurveyResult);
     sock.on('product-signal', handleProductSignal);
     sock.on('understanding-signal', handleUnderstanding);
+    sock.on('clarity-feedback', handleClarityFeedback);
 
     return () => {
       sock.emit('leave-room', { conversationId });
@@ -157,6 +179,7 @@ export default function ChatReview() {
       sock.off('game-survey-result', handleGameSurveyResult);
       sock.off('product-signal', handleProductSignal);
       sock.off('understanding-signal', handleUnderstanding);
+      sock.off('clarity-feedback', handleClarityFeedback);
     };
   }, [conversationId, agent]);
 
@@ -166,13 +189,19 @@ export default function ChatReview() {
 
   function sendApproved() {
     if (!composeText.trim()) return;
-    socketRef.current.emit('agent-send-approved', { conversationId, text: composeText.trim() });
+    // Pass the draft's grounding so the customer sees the source (transparency).
+    socketRef.current.emit('agent-send-approved', {
+      conversationId,
+      text: composeText.trim(),
+      sources: draft?.basedOn?.slice(0, 3) || [],
+    });
     setMessages((prev) => [
       ...prev,
       { id: `local-${Date.now()}`, sender: 'agent', kind: 'approved', content: composeText.trim(), createdAt: new Date().toISOString() },
     ]);
     setComposeText('');
     setDraft(null);
+    setSelectedTone(null);
   }
 
   async function endSession() {
@@ -190,8 +219,8 @@ export default function ChatReview() {
   }
 
   return (
-    <div className="grid lg:grid-cols-[1fr_320px] gap-5">
-      <Card className="p-0 flex flex-col h-[78vh]">
+    <div className="grid lg:grid-cols-[1fr_340px] gap-5">
+      <Card className="p-0 flex flex-col h-[82vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <PersonAvatar name={customer?.name} emoji={customer?.avatarEmoji || <User size={16} />} className="h-9 w-9 bg-brand-50 text-base" />
@@ -244,9 +273,16 @@ export default function ChatReview() {
             </div>
           )}
           {draft && (
-            <div className={`mb-2 flex items-center gap-1.5 text-[11px] text-accent-600 ${styles.draftBadge}`}>
-              <Sparkles size={12} />
-              AI draft ready - grounded in: {draft.basedOn?.length ? draft.basedOn.join(', ') : 'general guidance'}. Review before sending.
+            <div className={`mb-2 flex items-center justify-between gap-1.5 text-[11px] text-accent-600 ${styles.draftBadge}`}>
+              <span className="flex items-center gap-1.5">
+                <Sparkles size={12} />
+                {selectedTone ? `Editing the "${selectedTone}" option` : 'AI draft ready'} — pick an option on the right, then edit and send.
+              </span>
+              {composeText && (
+                <button type="button" onClick={() => setComposeText('')} className="text-slate-400 hover:text-slate-600 shrink-0">
+                  Clear
+                </button>
+              )}
             </div>
           )}
           <div className="flex items-end gap-2">
@@ -260,8 +296,8 @@ export default function ChatReview() {
                 }
               }}
               productType={conversation?.productContext}
-              placeholder="Reply will appear here as a draft when the customer messages - edit before sending…"
-              rows={2}
+              placeholder="Type your reply, or pick one of the suggested replies on the right and edit it here before sending…"
+              rows={5}
               className={styles.composer}
             />
             <Button onClick={sendApproved} disabled={!composeText.trim()}>
@@ -273,9 +309,60 @@ export default function ChatReview() {
 
       <div className="space-y-4 self-start">
         {recapOpen && <ClarityRecapModal conversationId={conversationId} onClose={() => setRecapOpen(false)} />}
+
+        {/* Guided reply options — the rep picks the most sensible tone, then
+            edits it in the composer on the left. All grounded in approved
+            messaging; every option is trust-building, never a hard sell. */}
+        {draft?.draftOptions?.length > 0 && (
+          <Card className="p-4 border-brand-100">
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquareText size={15} className="text-brand-600" />
+              <h2 className="text-sm font-semibold text-slate-700">Suggested replies</h2>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Pick the tone that fits — it loads into the editor to review and send.</p>
+            <div className="space-y-2">
+              {draft.draftOptions.map((opt, i) => {
+                const active = selectedTone === opt.tone && composeText === opt.text;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setComposeText(opt.text);
+                      setSelectedTone(opt.tone);
+                    }}
+                    className={`w-full text-left rounded-xl border p-2.5 transition-colors ${
+                      active ? 'border-brand-400 bg-brand-50/70 ring-1 ring-brand-200' : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${TONE_STYLES[opt.tone] || 'bg-slate-100 text-slate-500'}`}>
+                        {opt.tone}
+                      </span>
+                      {active && <span className="text-[9px] font-semibold text-brand-600">✓ In editor</span>}
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">{opt.text}</p>
+                  </button>
+                );
+              })}
+            </div>
+            {draft.basedOn?.length > 0 && (
+              <p className="text-[10px] text-slate-400 mt-2.5 pt-2 border-t border-slate-100">
+                Grounded in: {draft.basedOn.slice(0, 3).join(', ')}{draft.basedOn.length > 3 ? '…' : ''}
+              </p>
+            )}
+          </Card>
+        )}
+
         <Button variant="secondary" size="sm" className="w-full" onClick={() => setRecapOpen(true)}>
           <FileText size={14} /> Clarity Recap
         </Button>
+        {clarityAck && (
+          <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 animate-fade-in">
+            <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+            <p className="text-[11px] text-emerald-800">Client tapped <span className="font-semibold">"Got it"</span> — they understood your last message.</p>
+          </div>
+        )}
         {confusion && <UnderstandingNudge confusion={confusion} onDismiss={() => setConfusion(null)} />}
         {productSignal && (
           <ProductSignalNudge signal={productSignal} onDismiss={() => setProductSignal(null)} />
@@ -391,14 +478,6 @@ export default function ChatReview() {
             initialResult={surveyResult}
             compact
           />
-        </Card>
-
-        <Card className={`p-4 ${styles.sideNote}`}>
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">Why this matters</h2>
-          <p className="text-xs text-slate-500">
-            Every customer message gets an AI-drafted reply grounded only in approved messaging. Nothing is sent to the
-            customer until you review and approve it - keeping the human in the loop.
-          </p>
         </Card>
       </div>
     </div>

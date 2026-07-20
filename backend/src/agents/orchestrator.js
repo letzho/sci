@@ -6,6 +6,7 @@ const researchAgent = require('./researchAgent');
 const { loadPolicyContext, policyToTalkingPoints, enrichPolicyContextForQuestion } = require('../services/policyContext');
 const { loadRecentChatHistory } = require('../db/repo');
 const { isComparisonQuery, inferCompareProductType } = require('../services/comparisonQuery');
+const { isClarifyRequest } = require('../services/comprehensionService');
 
 /**
  * Orchestrator
@@ -116,7 +117,14 @@ async function getChatDraft({ customerMessage, productType, conversationId }) {
     webResults = await researchAgent.supplement({ text: nlu.text, productType: nlu.productType, talkingPoints });
   }
 
-  const { draftReply, source } = await draftingAgent.draftChatReply({
+  // "Clarify mode": the customer asked what the rep meant, not a new question.
+  // Re-explain the rep's LAST message simpler, instead of retrieving fresh
+  // talking points that don't address their confusion.
+  const lastRepTurn = [...recentHistory].reverse().find((m) => m.sender === 'agent');
+  const clarifyMode = Boolean(isClarifyRequest(customerMessage) && lastRepTurn);
+  const messageToSimplify = clarifyMode ? lastRepTurn.content : null;
+
+  const draftArgs = {
     customerMessage: nlu.text,
     productType: nlu.productType,
     talkingPoints,
@@ -124,7 +132,20 @@ async function getChatDraft({ customerMessage, productType, conversationId }) {
     policyContext: hasPolicyDoc && !compareQuestion ? policyContext : null,
     recentHistory,
     compareQuestion,
-  });
+    clarifyMode,
+    messageToSimplify,
+  };
+
+  const { draftReply, source } = await draftingAgent.draftChatReply(draftArgs);
+
+  // Offer the rep 2-3 tonal variations to choose from (trust-building), with
+  // the single deterministic draft as the guaranteed fallback / first option.
+  const openaiService = require('../services/openaiService');
+  const aiOptions = await openaiService.draftReplyOptions(draftArgs);
+  const draftOptions =
+    aiOptions && aiOptions.length
+      ? aiOptions
+      : [{ tone: 'Suggested reply', text: draftReply }];
 
   const basedOn = [...new Set([
     ...(hasPolicyDoc && policyContext
@@ -147,6 +168,7 @@ async function getChatDraft({ customerMessage, productType, conversationId }) {
     productType: nlu.productType || null,
     intent: nlu.intent,
     draftReply,
+    draftOptions,
     basedOn,
     webResults,
     complianceFlags,

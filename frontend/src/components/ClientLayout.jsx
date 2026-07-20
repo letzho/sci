@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { getSocket } from '../socket.js';
 import IncomingCallBanner from './IncomingCallBanner.jsx';
+import ClientConsentModal from './ClientConsentModal.jsx';
 
 const STORAGE_KEY = 'sci_client_customer_id';
+const CONSENT_KEY = 'sci_client_consent';
 
 /**
  * Shared wrapper for every /client/* route (mirrors AgentLayout on the
@@ -19,6 +21,22 @@ export default function ClientLayout() {
   const location = useLocation();
   const pathnameRef = useRef(location.pathname);
   const [incomingCall, setIncomingCall] = useState(null);
+  const [consented, setConsented] = useState(() => {
+    try {
+      return localStorage.getItem(CONSENT_KEY) === '1';
+    } catch {
+      return true;
+    }
+  });
+
+  function acceptConsent() {
+    try {
+      localStorage.setItem(CONSENT_KEY, '1');
+    } catch {
+      /* noop */
+    }
+    setConsented(true);
+  }
 
   useEffect(() => {
     pathnameRef.current = location.pathname;
@@ -62,6 +80,10 @@ export default function ClientLayout() {
       getSocket().emit('call-declined', { conversationId: incomingCall.conversationId });
     }
     setIncomingCall(null);
+  }
+
+  if (!consented) {
+    return <ClientConsentModal onAccept={acceptConsent} />;
   }
 
   return (

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, MessageSquare, PieChart, RefreshCcw, ShieldCheck, Video } from 'lucide-react';
+import { ChevronRight, MessageSquare, PieChart, RefreshCcw, ShieldCheck, Video, Check } from 'lucide-react';
 import api from '../../api/client';
 import PhoneFrame from '../../components/PhoneFrame.jsx';
 import Logo from '../../components/Logo.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
+import { fetchClientAgent, getChosenAgentId, setChosenAgentId } from '../../utils/clientAgent.js';
 import styles from './ClientHome.module.css';
 
 const STORAGE_KEY = 'sci_client_customer_id';
@@ -24,13 +25,20 @@ export default function ClientHome() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [starting, setStarting] = useState(false);
+  const [allAgents, setAllAgents] = useState([]);
+  const [repPickerOpen, setRepPickerOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
-        const [customersRes, agentRes] = await Promise.all([api.get('/customers'), api.get('/agents/primary')]);
+        const [customersRes, agentRes, agentsRes] = await Promise.all([
+          api.get('/customers'),
+          fetchClientAgent(),
+          api.get('/agents').catch(() => ({ data: { agents: [] } })),
+        ]);
         setCustomers(customersRes.data.customers);
         setAgent(agentRes.data.agent);
+        setAllAgents(agentsRes.data.agents || []);
       } catch (err) {
         console.error('Client home load failed:', err);
         setLoadError('Could not reach the server. Make sure the backend is running on your PC and both devices are on the same Wi-Fi.');
@@ -40,6 +48,12 @@ export default function ClientHome() {
     }
     load();
   }, []);
+
+  function chooseRep(a) {
+    setChosenAgentId(a.id);
+    setAgent(a);
+    setRepPickerOpen(false);
+  }
 
   function chooseProfile(id) {
     localStorage.setItem(STORAGE_KEY, id);
@@ -149,14 +163,41 @@ export default function ClientHome() {
         </div>
 
         <Card className={`p-4 mb-5 brand-gradient text-white border-none ${styles.repCard}`}>
-          <div className="flex items-center gap-2 mb-1">
-            <ShieldCheck size={15} />
-            <span className="text-xs font-semibold">Your representative</span>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={15} />
+              <span className="text-xs font-semibold">Your representative</span>
+            </div>
+            {allAgents.length > 1 && (
+              <button type="button" onClick={() => setRepPickerOpen((v) => !v)} className="text-[10px] text-white/80 underline">
+                {repPickerOpen ? 'Close' : 'Change'}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 text-sm font-bold">
             <PersonAvatar name={agent?.name} emoji={agent?.avatarEmoji} className="h-6 w-6 bg-white/20 text-sm" />
             {agent?.name}
           </div>
+
+          {repPickerOpen && (
+            <div className="mt-3 space-y-1 bg-white/10 rounded-xl p-2">
+              <p className="text-[10px] text-white/70 px-1 pb-1">Pair with the rep you signed up as:</p>
+              {allAgents.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => chooseRep(a)}
+                  className="w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/15"
+                >
+                  <span className="flex items-center gap-2 text-xs">
+                    <PersonAvatar name={a.name} emoji={a.avatarEmoji} className="h-5 w-5 bg-white/20 text-[11px]" />
+                    {a.name}
+                  </span>
+                  {a.id === agent?.id && <Check size={13} />}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Button size="sm" className={`bg-white/15 hover:bg-white/25 ${styles.actionBtn}`} disabled={starting} onClick={() => startChannel('virtual_call')}>
               <Video size={14} /> Video call

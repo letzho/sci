@@ -3,8 +3,25 @@ const db = require('../db/connection');
 const { genId } = require('../utils/idGen');
 const openaiService = require('../services/openaiService');
 const { buildRecapContext } = require('../services/comprehensionService');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
+
+/**
+ * Reset THIS agent's demo data — deletes their conversations (messages,
+ * guidance, and uploaded policy docs cascade via FK). Seeded customers,
+ * policies and knowledge base are untouched, and other testers' sessions are
+ * unaffected, so each tester can get a clean slate without stepping on others.
+ */
+router.post('/reset', requireAuth, async (req, res) => {
+  try {
+    const info = await db.prepare(`DELETE FROM conversations WHERE agent_id = ?`).run(req.agent.id);
+    res.json({ ok: true, deleted: info.changes ?? 0 });
+  } catch (err) {
+    console.error('[conversations.routes] /reset error:', err);
+    res.status(500).json({ error: 'Failed to reset demo data' });
+  }
+});
 
 const RECAP_LANGS = ['en', 'zh', 'ms', 'ta'];
 
