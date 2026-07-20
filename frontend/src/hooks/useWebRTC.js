@@ -69,7 +69,20 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
 
   const ensurePeerConnection = useCallback(() => {
     if (pcRef.current) return pcRef.current;
-    const pc = new RTCPeerConnection(getPeerConnectionConfig({ forceRelay: forceRelayRef.current }));
+    const config = getPeerConnectionConfig({ forceRelay: forceRelayRef.current });
+    // Surface whether a TURN relay is actually in play — without one, a call
+    // between two different networks will never connect, and that is otherwise
+    // invisible ("connecting…" forever).
+    const relayCount = (config.iceServers || []).filter((s) => {
+      const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urls.some((u) => typeof u === 'string' && u.startsWith('turn'));
+    }).length;
+    console.log(`[useWebRTC] creating peer connection with ${config.iceServers?.length || 0} ICE server(s), ${relayCount} TURN relay(s)`);
+    if (relayCount === 0) {
+      console.warn('[useWebRTC] no TURN relay available — a cross-network call will likely fail');
+    }
+    const pc = new RTCPeerConnection(config);
+    setIceDebug(relayCount ? `Using ${relayCount} TURN relay(s)` : 'No TURN relay — same-network only');
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -234,6 +247,12 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
       }
 
       setConnectionState('connecting');
+      // MUST resolve before creating the connection: RTCPeerConnection reads
+      // iceServers synchronously at construction (and iceCandidatePoolSize
+      // starts gathering immediately), so building it before the TURN
+      // credentials arrive would permanently leave this call STUN-only and
+      // unable to connect across networks.
+      await prefetchIceServers();
       const pc = ensurePeerConnection();
       await addLocalTracks(pc);
       try {
@@ -267,6 +286,9 @@ export function useWebRTC({ socket, conversationId, role, displayName }) {
       }
 
       setConnectionState('connecting');
+      // Same reason as the offer side — the answering peer needs its own TURN
+      // relay candidates, so wait for credentials before constructing.
+      await prefetchIceServers();
       const pc = ensurePeerConnection();
       await addLocalTracks(pc);
       try {
