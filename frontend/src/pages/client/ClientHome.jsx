@@ -58,6 +58,9 @@ export default function ClientHome() {
   function chooseProfile(id) {
     localStorage.setItem(STORAGE_KEY, id);
     setSelectedId(id);
+    // Tell ClientLayout to announce presence now — picking a profile does not
+    // change the route, so the rep could otherwise never ring this customer.
+    window.dispatchEvent(new Event('sci-customer-changed'));
   }
 
   function switchProfile() {

@@ -42,11 +42,29 @@ export default function ClientLayout() {
     pathnameRef.current = location.pathname;
   }, [location.pathname]);
 
-  // Re-announce presence on every navigation - cheap and idempotent, and
-  // covers the case where the customer picks/switches their demo profile.
+  // Announce presence so the rep can ring this customer. The server maps
+  // customerId -> socket.id, so the mapping goes STALE whenever the socket
+  // reconnects (very common on mobile data / cross-network, and after a
+  // sleeping backend wakes). Re-announcing on every `connect` keeps it fresh;
+  // without this the rep sees "They're not online right now" even though the
+  // customer has the portal open. Also fires on navigation and when the
+  // customer picks their profile (custom event from ClientHome).
   useEffect(() => {
-    const customerId = localStorage.getItem(STORAGE_KEY);
-    if (customerId) getSocket().emit('register-customer', { customerId });
+    const socket = getSocket();
+
+    const announce = () => {
+      const customerId = localStorage.getItem(STORAGE_KEY);
+      if (customerId) socket.emit('register-customer', { customerId });
+    };
+
+    announce();
+    socket.on('connect', announce);
+    window.addEventListener('sci-customer-changed', announce);
+
+    return () => {
+      socket.off('connect', announce);
+      window.removeEventListener('sci-customer-changed', announce);
+    };
   }, [location.pathname]);
 
   useEffect(() => {
