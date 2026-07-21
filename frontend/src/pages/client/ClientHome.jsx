@@ -28,11 +28,17 @@ export default function ClientHome() {
   const [allAgents, setAllAgents] = useState([]);
   const [repPickerOpen, setRepPickerOpen] = useState(false);
 
+  async function loadCustomersForAgent(agentId) {
+    const res = await api.get('/customers', { params: agentId ? { agentId } : {} });
+    setCustomers(res.data.customers);
+  }
+
   useEffect(() => {
     async function load() {
       try {
+        const chosenAgentId = getChosenAgentId();
         const [customersRes, agentRes, agentsRes] = await Promise.all([
-          api.get('/customers'),
+          api.get('/customers', { params: chosenAgentId ? { agentId: chosenAgentId } : {} }),
           fetchClientAgent(),
           api.get('/agents').catch(() => ({ data: { agents: [] } })),
         ]);
@@ -49,10 +55,15 @@ export default function ClientHome() {
     load();
   }, []);
 
-  function chooseRep(a) {
+  async function chooseRep(a) {
     setChosenAgentId(a.id);
     setAgent(a);
     setRepPickerOpen(false);
+    try {
+      await loadCustomersForAgent(a.id);
+    } catch (err) {
+      console.error('Could not load clients for rep:', err);
+    }
   }
 
   function chooseProfile(id) {

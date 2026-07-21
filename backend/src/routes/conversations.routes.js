@@ -86,7 +86,22 @@ function assertAgentOwnsConversation(req, convo) {
  * type/copy) and still land on the exact same conversation/room id.
  */
 router.post('/start', async (req, res) => {
-  const { agentId, customerId, channel, productType } = req.body || {};
+  let { agentId, customerId, channel, productType } = req.body || {};
+
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      if (agentId && agentId !== payload.id) {
+        return res.status(403).json({ error: 'Session mismatch — please sign out and sign in again' });
+      }
+      agentId = payload.id;
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  }
+
   if (!agentId || !customerId || !channel) {
     return res.status(400).json({ error: 'agentId, customerId and channel are required' });
   }

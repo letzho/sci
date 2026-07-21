@@ -25,6 +25,14 @@ function optionalAgentId(req) {
   }
 }
 
+/** Agent from JWT, or from ?agentId= for the Client Portal (no customer login). */
+function resolveAgentScope(req) {
+  const fromToken = optionalAgentId(req);
+  if (fromToken) return fromToken;
+  const queryId = String(req.query.agentId || '').trim();
+  return queryId || null;
+}
+
 function mapPolicy(row) {
   let coverage = {};
   try {
@@ -77,7 +85,7 @@ async function loadCustomerMapped(id) {
 }
 
 function assertCanView(req, res, customer) {
-  const agentId = optionalAgentId(req);
+  const agentId = resolveAgentScope(req);
   if (!agentCanView(customer, agentId)) {
     res.status(agentId ? 403 : 404).json({ error: agentId ? 'Not authorized for this client' : 'Customer not found' });
     return false;
@@ -108,7 +116,7 @@ function parseCustomerBody(body) {
 }
 
 router.get('/', async (req, res) => {
-  const agentId = optionalAgentId(req);
+  const agentId = resolveAgentScope(req);
   const { sql, params } = listCustomersClause(agentId);
   const customers = await db.prepare(`SELECT * FROM customers ${sql} ORDER BY is_demo DESC, created_at ASC`).all(...params);
   const policyStmt = db.prepare(`SELECT * FROM policies WHERE customer_id = ? ORDER BY created_at ASC`);

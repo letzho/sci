@@ -8,7 +8,7 @@ import PhoneFrame from '../../components/PhoneFrame.jsx';
 import PersonAvatar from '../../components/PersonAvatar.jsx';
 import { LoadingSpinner } from '../../components/ui.jsx';
 import { mapConversationMessages } from '../../utils/chatMessageFormat.js';
-import { fetchClientAgent } from '../../utils/clientAgent.js';
+import { fetchClientAgent, getChosenAgentId } from '../../utils/clientAgent.js';
 import styles from './ClientChat.module.css';
 
 // 'policy_document' messages carry a JSON-encoded payload in `content`
@@ -61,7 +61,9 @@ export default function ClientChat() {
       );
       const agentRes = await fetchClientAgent();
       setAgent(agentRes.data.agent);
-      const custRes = await api.get(`/customers/${convoRes.data.conversation.customerId}`);
+      const custRes = await api.get(`/customers/${convoRes.data.conversation.customerId}`, {
+        params: { agentId: getChosenAgentId() || convoRes.data.conversation.agentId },
+      });
       setCustomerProfile(custRes.data.customer);
       setLoading(false);
     }

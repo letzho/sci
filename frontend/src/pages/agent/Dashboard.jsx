@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [briefCustomer, setBriefCustomer] = useState(null);
   const [formCustomer, setFormCustomer] = useState(null);
   const [showAddClient, setShowAddClient] = useState(false);
+  const [sessionError, setSessionError] = useState('');
 
   useEffect(() => {
     api.get('/tools/meeting-templates').then((res) => setMeetingTemplates(res.data.templates)).catch(() => {});
@@ -75,6 +76,7 @@ export default function Dashboard() {
   async function startSession(customer, channelKey) {
     if (!agent) return;
     setStartingKey(`${customer.id}-${channelKey}`);
+    setSessionError('');
     try {
       const productType = customer.policies?.[0]?.productType || null;
       const res = await api.post('/conversations/start', {
@@ -88,6 +90,13 @@ export default function Dashboard() {
       if (err.response?.status === 401) {
         logout();
         navigate('/agent/login', { state: { message: 'Your session expired (this can happen after re-seeding the database). Please sign in again.' } });
+      } else if (err.response?.status === 403) {
+        setSessionError(
+          err.response?.data?.error ||
+            'Cannot start a session with this client. Try signing out and back in, or delete and re-add the client under your account.'
+        );
+      } else {
+        setSessionError('Could not start session. Check your connection and try again.');
       }
     } finally {
       setStartingKey(null);
@@ -237,6 +246,9 @@ export default function Dashboard() {
         <p className="text-[11px] text-slate-400 mb-3">
           Demo clients (Alex, Mary, Daniel, Priya) are shared. Use <strong className="font-medium text-slate-500">Add client</strong> for your own current clients or prospects.
         </p>
+        {sessionError && (
+          <p className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2 mb-3">{sessionError}</p>
+        )}
         <div className="grid md:grid-cols-2 gap-4">
           {customers.map((customer) => (
             <Card key={customer.id} className={`p-4 ${styles.customerCard}`}>
