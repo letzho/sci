@@ -18,7 +18,7 @@ export function getAvatarPhoto(name) {
  * Avatar: uploaded photo (DB) → demo static headshot → emoji fallback.
  * Uploaded photos are fetched with auth via /customers/:id/photo.
  */
-export default function PersonAvatar({ name, emoji, photoUrl, className = '', imgClassName = '' }) {
+export default function PersonAvatar({ name, emoji, photoUrl, photoScopeAgentId, className = '', imgClassName = '' }) {
   const staticPhoto = !photoUrl ? getAvatarPhoto(name) : null;
   const [uploadedSrc, setUploadedSrc] = useState(null);
 
@@ -29,8 +29,9 @@ export default function PersonAvatar({ name, emoji, photoUrl, className = '', im
     }
     let objectUrl;
     let cancelled = false;
+    const params = photoScopeAgentId ? { agentId: photoScopeAgentId } : undefined;
     api
-      .get(photoUrl, { responseType: 'blob' })
+      .get(photoUrl, { responseType: 'blob', params })
       .then((res) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(res.data);
@@ -43,7 +44,7 @@ export default function PersonAvatar({ name, emoji, photoUrl, className = '', im
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [photoUrl]);
+  }, [photoUrl, photoScopeAgentId]);
 
   const photo = uploadedSrc || staticPhoto;
 
