@@ -228,12 +228,15 @@ export default function Dashboard() {
       </Card>
 
       <div>
-        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
           <h2 className="text-sm font-semibold text-slate-700">Customers</h2>
-          <Button size="sm" variant="outline" onClick={() => setShowAddClient(true)}>
+          <Button size="sm" variant="primary" onClick={() => setShowAddClient(true)}>
             <UserPlus size={14} /> Add client
           </Button>
         </div>
+        <p className="text-[11px] text-slate-400 mb-3">
+          Demo clients (Alex, Mary, Daniel, Priya) are shared. Use <strong className="font-medium text-slate-500">Add client</strong> for your own current clients or prospects.
+        </p>
         <div className="grid md:grid-cols-2 gap-4">
           {customers.map((customer) => (
             <Card key={customer.id} className={`p-4 ${styles.customerCard}`}>
