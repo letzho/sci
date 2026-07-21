@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { X, UserPlus, Save } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, UserPlus, Save, Camera, Trash2 } from 'lucide-react';
 import api from '../api/client';
 import { Button } from './ui.jsx';
+import PersonAvatar from './PersonAvatar.jsx';
+import { resizeImageFile } from '../utils/resizeImage.js';
 
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-200';
 
@@ -18,6 +20,10 @@ export default function ClientFormModal({ customer, onClose, onSaved }) {
   const [healthCondition, setHealthCondition] = useState(customer?.healthCondition || '');
   const [notes, setNotes] = useState(customer?.notes || '');
   const [clientStatus, setClientStatus] = useState(customer?.clientStatus || 'current');
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [avatarPhoto, setAvatarPhoto] = useState(undefined);
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -30,7 +36,30 @@ export default function ClientFormModal({ customer, onClose, onSaved }) {
     setHealthCondition(customer.healthCondition || '');
     setNotes(customer.notes || '');
     setClientStatus(customer.clientStatus || 'current');
+    setPhotoPreview(null);
+    setAvatarPhoto(undefined);
+    setPhotoError('');
   }, [customer]);
+
+  async function handlePhotoPick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoError('');
+    try {
+      const dataUrl = await resizeImageFile(file);
+      setPhotoPreview(dataUrl);
+      setAvatarPhoto(dataUrl);
+    } catch (err) {
+      setPhotoError(err.message || 'Could not process photo.');
+    }
+    e.target.value = '';
+  }
+
+  function removePhoto() {
+    setPhotoPreview(null);
+    setAvatarPhoto(null);
+    setPhotoError('');
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -49,6 +78,7 @@ export default function ClientFormModal({ customer, onClose, onSaved }) {
       notes,
       clientStatus,
     };
+    if (avatarPhoto !== undefined) payload.avatarPhoto = avatarPhoto;
     try {
       const res = isEdit
         ? await api.put(`/customers/${customer.id}`, payload)
@@ -86,6 +116,36 @@ export default function ClientFormModal({ customer, onClose, onSaved }) {
           </div>
 
           <div className="px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="" className="h-16 w-16 rounded-full object-cover border border-slate-200" />
+                ) : (
+                  <PersonAvatar
+                    name={name || 'Client'}
+                    emoji="🙂"
+                    photoUrl={isEdit ? customer?.photoUrl : null}
+                    className="h-16 w-16 bg-brand-50 text-2xl"
+                  />
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-1.5">
+                  <Button type="button" size="sm" variant="outline" onClick={() => photoInputRef.current?.click()}>
+                    <Camera size={13} /> Upload photo
+                  </Button>
+                  {(photoPreview || (isEdit && customer?.hasPhoto && avatarPhoto !== null)) && (
+                    <Button type="button" size="sm" variant="outline" onClick={removePhoto}>
+                      <Trash2 size={13} /> Remove
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400">Stored securely in your database · JPG/PNG · max ~512 KB</p>
+                {photoError && <p className="text-[10px] text-rose-600">{photoError}</p>}
+                <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoPick} />
+              </div>
+            </div>
+
             <label className="block space-y-1">
               <span className="text-xs font-medium text-slate-600">Full name *</span>
               <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required />

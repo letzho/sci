@@ -244,6 +244,7 @@ export default function Dashboard() {
                 <PersonAvatar
                   name={customer.name}
                   emoji={customer.avatarEmoji || '🙂'}
+                  photoUrl={customer.photoUrl}
                   className={`h-10 w-10 bg-brand-50 text-lg shrink-0 ${styles.avatar}`}
                 />
                 <div className="min-w-0 flex-1">

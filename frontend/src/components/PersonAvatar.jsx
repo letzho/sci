@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import api from '../api/client';
+
 const PHOTO_BY_NAME = {
   'alex tan': '/avatars/alex.png',
   'mary lim': '/avatars/mary.png',
@@ -12,13 +15,38 @@ export function getAvatarPhoto(name) {
 }
 
 /**
- * Drop-in avatar: renders a real headshot photo for known people (by name),
- * falling back to the existing emoji for anyone else (e.g. Wei Ling, who has
- * no provided photo). Pass the same size/background/text-size classes you'd
- * have put on the old wrapper div - rounding and centering are handled here.
+ * Avatar: uploaded photo (DB) → demo static headshot → emoji fallback.
+ * Uploaded photos are fetched with auth via /customers/:id/photo.
  */
-export default function PersonAvatar({ name, emoji, className = '', imgClassName = '' }) {
-  const photo = getAvatarPhoto(name);
+export default function PersonAvatar({ name, emoji, photoUrl, className = '', imgClassName = '' }) {
+  const staticPhoto = !photoUrl ? getAvatarPhoto(name) : null;
+  const [uploadedSrc, setUploadedSrc] = useState(null);
+
+  useEffect(() => {
+    if (!photoUrl) {
+      setUploadedSrc(null);
+      return undefined;
+    }
+    let objectUrl;
+    let cancelled = false;
+    api
+      .get(photoUrl, { responseType: 'blob' })
+      .then((res) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(res.data);
+        setUploadedSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setUploadedSrc(null);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [photoUrl]);
+
+  const photo = uploadedSrc || staticPhoto;
+
   return (
     <div className={`rounded-full overflow-hidden flex items-center justify-center shrink-0 ${className}`}>
       {photo ? <img src={photo} alt={name} className={`w-full h-full object-cover ${imgClassName}`} /> : emoji}

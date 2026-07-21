@@ -218,7 +218,7 @@ export default function ChatReview() {
       <Card className="p-0 flex flex-col h-[82vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <PersonAvatar name={customer?.name} emoji={customer?.avatarEmoji || <User size={16} />} className="h-9 w-9 bg-brand-50 text-base" />
+            <PersonAvatar name={customer?.name} emoji={customer?.avatarEmoji || <User size={16} />} photoUrl={customer?.photoUrl} className="h-9 w-9 bg-brand-50 text-base" />
             <div>
               <div className="font-semibold text-slate-800 text-sm">{customer?.name}</div>
               <div className="text-xs text-slate-400">{productLabel(conversation?.productContext)}</div>

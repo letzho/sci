@@ -8,6 +8,7 @@ const { buildProductFit } = require('../services/productFitService');
 const openaiService = require('../services/openaiService');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 const { agentCanView, agentCanEdit, listCustomersClause } = require('../utils/customerAccess');
+const { parsePhotoInput, photoResponseFromRow } = require('../utils/customerPhoto');
 
 const router = express.Router();
 
@@ -58,6 +59,8 @@ function mapCustomer(row, policies) {
     agentId: row.agent_id || null,
     isDemo: Boolean(row.is_demo),
     clientStatus: row.client_status || 'current',
+    hasPhoto: Boolean(row.avatar_photo),
+    photoUrl: row.avatar_photo ? `/customers/${row.id}/photo` : null,
     policies: policies.map(mapPolicy),
   };
 }
@@ -85,6 +88,12 @@ function assertCanView(req, res, customer) {
 function parseCustomerBody(body) {
   const name = String(body?.name || '').trim();
   const clientStatus = VALID_CLIENT_STATUS.has(body?.clientStatus) ? body.clientStatus : 'current';
+  const photo = parsePhotoInput(body?.avatarPhoto);
+  if (photo.error) {
+    const err = new Error(photo.error);
+    err.status = 400;
+    throw err;
+  }
   return {
     name,
     email: String(body?.email || '').trim() || null,
@@ -94,6 +103,7 @@ function parseCustomerBody(body) {
     notes: String(body?.notes || '').trim() || null,
     avatarEmoji: String(body?.avatarEmoji || '🙂').trim() || '🙂',
     clientStatus,
+    photo,
   };
 }
 
@@ -110,14 +120,20 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', requireAuth, async (req, res) => {
-  const fields = parseCustomerBody(req.body);
+  let fields;
+  try {
+    fields = parseCustomerBody(req.body);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
   if (!fields.name) return res.status(400).json({ error: 'Name is required' });
 
   const id = genId('cust');
+  const avatarPhoto = fields.photo.clear ? null : fields.photo.value ?? null;
   await db
     .prepare(
-      `INSERT INTO customers (id, name, email, phone, dob, avatar_emoji, notes, health_condition, agent_id, is_demo, client_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
+      `INSERT INTO customers (id, name, email, phone, dob, avatar_emoji, avatar_photo, notes, health_condition, agent_id, is_demo, client_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
     )
     .run(
       id,
@@ -126,6 +142,7 @@ router.post('/', requireAuth, async (req, res) => {
       fields.phone,
       fields.dob,
       fields.avatarEmoji,
+      avatarPhoto,
       fields.notes,
       fields.healthCondition,
       req.agent.id,
@@ -143,12 +160,21 @@ router.put('/:id', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Demo clients cannot be edited — add your own client instead' });
   }
 
-  const fields = parseCustomerBody(req.body);
+  let fields;
+  try {
+    fields = parseCustomerBody(req.body);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
   if (!fields.name) return res.status(400).json({ error: 'Name is required' });
+
+  let avatarPhoto = existing.avatar_photo;
+  if (fields.photo.clear) avatarPhoto = null;
+  else if (fields.photo.value !== undefined) avatarPhoto = fields.photo.value;
 
   await db
     .prepare(
-      `UPDATE customers SET name = ?, email = ?, phone = ?, dob = ?, avatar_emoji = ?, notes = ?, health_condition = ?, client_status = ? WHERE id = ?`
+      `UPDATE customers SET name = ?, email = ?, phone = ?, dob = ?, avatar_emoji = ?, avatar_photo = ?, notes = ?, health_condition = ?, client_status = ? WHERE id = ?`
     )
     .run(
       fields.name,
@@ -156,6 +182,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       fields.phone,
       fields.dob,
       fields.avatarEmoji,
+      avatarPhoto,
       fields.notes,
       fields.healthCondition,
       fields.clientStatus,
@@ -175,6 +202,19 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
   await db.prepare(`DELETE FROM customers WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
+});
+
+router.get('/:id/photo', async (req, res) => {
+  const customer = await loadCustomerRow(req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  if (!assertCanView(req, res, customer)) return;
+
+  const photo = photoResponseFromRow(customer);
+  if (!photo) return res.status(404).json({ error: 'No photo for this client' });
+
+  res.set('Content-Type', photo.mime);
+  res.set('Cache-Control', 'private, max-age=3600');
+  res.send(photo.buffer);
 });
 
 router.get('/:id/profile', async (req, res) => {

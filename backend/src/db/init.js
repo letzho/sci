@@ -188,6 +188,7 @@ async function initSchema() {
   await ensureColumn('customers', 'agent_id', 'TEXT REFERENCES agents(id) ON DELETE CASCADE');
   await ensureColumn('customers', 'is_demo', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn('customers', 'client_status', "TEXT NOT NULL DEFAULT 'current'");
+  await ensureColumn('customers', 'avatar_photo', 'TEXT');
 
   // Mark the four seeded demo profiles so every agent can use them.
   for (const email of ['alex.tan@example.com', 'mary.lim@example.com', 'daniel.wong@example.com', 'priya.nair@example.com']) {
