@@ -185,6 +185,16 @@ async function initSchema() {
   await ensureColumn('learned_chunks', 'embedding', 'TEXT');
   await ensureColumn('policy_uploads', 'raw_extracted_text', 'TEXT');
   await ensureColumn('customers', 'health_condition', 'TEXT');
+  await ensureColumn('customers', 'agent_id', 'TEXT REFERENCES agents(id) ON DELETE CASCADE');
+  await ensureColumn('customers', 'is_demo', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn('customers', 'client_status', "TEXT NOT NULL DEFAULT 'current'");
+
+  // Mark the four seeded demo profiles so every agent can use them.
+  for (const email of ['alex.tan@example.com', 'mary.lim@example.com', 'daniel.wong@example.com', 'priya.nair@example.com']) {
+    await db.prepare(`UPDATE customers SET is_demo = 1 WHERE email = ?`).run(email);
+  }
+
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_customers_agent ON customers(agent_id)`);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS policy_comparisons (

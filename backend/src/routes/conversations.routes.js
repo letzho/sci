@@ -96,8 +96,13 @@ router.post('/start', async (req, res) => {
 
   const agent = await db.prepare(`SELECT id FROM agents WHERE id = ?`).get(agentId);
   if (!agent) return res.status(401).json({ error: 'Agent session expired — please sign out and sign in again' });
-  const customer = await db.prepare(`SELECT id FROM customers WHERE id = ?`).get(customerId);
+  const customer = await db.prepare(`SELECT id, agent_id, is_demo FROM customers WHERE id = ?`).get(customerId);
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+  const { agentCanView } = require('../utils/customerAccess');
+  if (!agentCanView(customer, agentId)) {
+    return res.status(403).json({ error: 'This client belongs to another representative' });
+  }
 
   let convo = await db
     .prepare(

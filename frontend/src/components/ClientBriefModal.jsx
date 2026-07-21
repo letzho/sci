@@ -37,7 +37,7 @@ function BulletList({ items, marker = '•', className = '' }) {
  * sessions and topics already discussed into a compliance-safe briefing —
  * "know your client" background study before the rep starts a conversation.
  */
-export default function ClientBriefModal({ customerId, customerName, onClose }) {
+export default function ClientBriefModal({ customerId, customerName, onClose, clientStatus }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -72,7 +72,10 @@ export default function ClientBriefModal({ customerId, customerName, onClose }) 
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Client Brief</h3>
-                <p className="text-[11px] text-slate-500">{customerName} · prepare before your call</p>
+                <p className="text-[11px] text-slate-500">
+                  {customerName}
+                  {clientStatus === 'prospect' ? ' · prospect' : ''} · prepare before your call
+                </p>
               </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Close">
@@ -93,6 +96,7 @@ export default function ClientBriefModal({ customerId, customerName, onClose }) 
               <>
                 {/* Snapshot chips */}
                 <div className="flex flex-wrap gap-1.5">
+                  {meta?.isProspect && <Chip tone="amber">Potential prospect</Chip>}
                   {portfolio?.age != null && <Chip>{portfolio.age} yrs</Chip>}
                   {meta?.healthCondition && <Chip tone="amber">{meta.healthCondition}</Chip>}
                   <Chip>{meta?.sessionCount || 0} prior session{meta?.sessionCount === 1 ? '' : 's'}</Chip>

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, ClipboardList, FileSearch, RotateCcw } from 'lucide-react';
+import { MessageSquare, MonitorSmartphone, Video, ChevronRight, RefreshCw, Trophy, Coffee, Plane, ClipboardList, FileSearch, RotateCcw, UserPlus, Pencil } from 'lucide-react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { mergeGamification, useGamificationBonus } from '../../context/GamificationBonusContext.jsx';
 import FlightSimulatorModal from '../../components/FlightSimulatorModal.jsx';
 import ClientBriefModal from '../../components/ClientBriefModal.jsx';
+import ClientFormModal from '../../components/ClientFormModal.jsx';
 import FirstRunTour from '../../components/FirstRunTour.jsx';
 import { Badge, Button, Card, LoadingSpinner, productLabel } from '../../components/ui.jsx';
 import BadgeGallery from '../../components/BadgeGallery.jsx';
@@ -33,6 +34,8 @@ export default function Dashboard() {
   const [meetingTemplates, setMeetingTemplates] = useState([]);
   const [simulatorCustomer, setSimulatorCustomer] = useState(null);
   const [briefCustomer, setBriefCustomer] = useState(null);
+  const [formCustomer, setFormCustomer] = useState(null);
+  const [showAddClient, setShowAddClient] = useState(false);
 
   useEffect(() => {
     api.get('/tools/meeting-templates').then((res) => setMeetingTemplates(res.data.templates)).catch(() => {});
@@ -225,19 +228,44 @@ export default function Dashboard() {
       </Card>
 
       <div>
-        <h2 className="text-sm font-semibold text-slate-700 mb-3">Customers</h2>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <h2 className="text-sm font-semibold text-slate-700">Customers</h2>
+          <Button size="sm" variant="outline" onClick={() => setShowAddClient(true)}>
+            <UserPlus size={14} /> Add client
+          </Button>
+        </div>
         <div className="grid md:grid-cols-2 gap-4">
           {customers.map((customer) => (
             <Card key={customer.id} className={`p-4 ${styles.customerCard}`}>
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <PersonAvatar
                   name={customer.name}
                   emoji={customer.avatarEmoji || '🙂'}
                   className={`h-10 w-10 bg-brand-50 text-lg shrink-0 ${styles.avatar}`}
                 />
-                <div className="min-w-0">
-                  <div className="font-semibold text-slate-800 text-sm truncate">{customer.name}</div>
-                  <div className="text-xs text-slate-400 truncate">{customer.email}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-800 text-sm truncate">{customer.name}</div>
+                      <div className="text-xs text-slate-400 truncate">{customer.email || 'No email on file'}</div>
+                    </div>
+                    {!customer.isDemo && (
+                      <button
+                        type="button"
+                        onClick={() => setFormCustomer(customer)}
+                        className="text-slate-400 hover:text-brand-600 p-1 shrink-0"
+                        title="Edit client"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {customer.isDemo && <Badge tone="brand">Demo</Badge>}
+                    <Badge tone={customer.clientStatus === 'prospect' ? 'warning' : 'success'}>
+                      {customer.clientStatus === 'prospect' ? 'Prospect' : 'Current'}
+                    </Badge>
+                  </div>
                 </div>
               </div>
 
@@ -282,10 +310,22 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {(showAddClient || formCustomer) && (
+        <ClientFormModal
+          customer={formCustomer}
+          onClose={() => {
+            setShowAddClient(false);
+            setFormCustomer(null);
+          }}
+          onSaved={() => load()}
+        />
+      )}
+
       {briefCustomer && (
         <ClientBriefModal
           customerId={briefCustomer.id}
           customerName={briefCustomer.name}
+          clientStatus={briefCustomer.clientStatus}
           onClose={() => setBriefCustomer(null)}
         />
       )}

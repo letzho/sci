@@ -200,7 +200,7 @@ async function seedCustomersAndPolicies() {
   ];
 
   const custStmt = db.prepare(
-    `INSERT INTO customers (id, name, email, phone, dob, avatar_emoji, notes, health_condition) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO customers (id, name, email, phone, dob, avatar_emoji, notes, health_condition, is_demo, client_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'current')`
   );
   const polStmt = db.prepare(`
     INSERT INTO policies
