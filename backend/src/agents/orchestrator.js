@@ -36,7 +36,20 @@ const { isClarifyRequest } = require('../services/comprehensionService');
 
 const AGENT_NAME = 'Orchestrator';
 
-async function getLiveGuidance({ text, productType }) {
+/** Short deterministic cue for the rep when the AI layer is off and nothing matched. */
+function buildFallbackExplainer({ text, customerContext, productType }) {
+  const t = (text || '').toLowerCase();
+  if (customerContext && /\b(what|which).*(insurance|cover|policy|policies|plan|have|got)\b/.test(t)) {
+    return `The customer is asking about their own cover. On file they have: ${customerContext}. Walk them through what each of these policies covers.`;
+  }
+  if (/\b(issue|problem|gap|missing|enough|cover enough|covered)\b/.test(t)) {
+    return `They're asking whether their cover has gaps. Review what they hold${customerContext ? ` (${customerContext})` : ''} and note which common areas — life, hospital/Shield, critical illness, retirement — aren't covered yet, as neutral discussion points.`;
+  }
+  const label = productType ? productType.replace(/_/g, ' ') : 'this topic';
+  return `No approved talking point matched exactly. Answer from what you know about ${label}, or ask one clarifying question to pull up the right detail — keep the conversation moving.`;
+}
+
+async function getLiveGuidance({ text, productType, customerContext = null }) {
   const compareQuestion = isComparisonQuery(text);
   const nlu = await nluAgent.analyze({
     text,
@@ -51,18 +64,25 @@ async function getLiveGuidance({ text, productType }) {
   const complianceFlags = await complianceAgent.checkCompliance({ text: nlu.text, productType: nlu.productType });
   const webResults = await researchAgent.supplement({ text: nlu.text, productType: nlu.productType, talkingPoints });
 
-  let aiExplainer = null;
-  if (talkingPoints.length > 0 || webResults.length > 0) {
-    aiExplainer = await draftingAgent.enhanceGuidance({
-      triggerText: nlu.text,
-      productType: nlu.productType,
-      talkingPoints,
-      webResults,
-    });
+  // Always try for an explainer — even when nothing matched — so the rep is
+  // never left with a bare "Heard: …" and no help. Grounded in the customer's
+  // own policies when the question is about what they have.
+  let aiExplainer = await draftingAgent.enhanceGuidance({
+    triggerText: nlu.text,
+    productType: nlu.productType,
+    talkingPoints,
+    webResults,
+    customerContext,
+  });
+
+  // Deterministic fallback (OpenAI off, or the call failed) so there is always
+  // a useful cue on screen.
+  if (!aiExplainer && talkingPoints.length === 0) {
+    aiExplainer = buildFallbackExplainer({ text: nlu.text, customerContext, productType: nlu.productType });
   }
 
   console.log(
-    `[${AGENT_NAME}] live guidance pipeline complete - ${talkingPoints.length} talking point(s), ${webResults.length} web result(s), ${complianceFlags.length} flag(s)`
+    `[${AGENT_NAME}] live guidance pipeline complete - ${talkingPoints.length} talking point(s), ${webResults.length} web result(s), ${complianceFlags.length} flag(s), explainer=${Boolean(aiExplainer)}`
   );
 
   return {

@@ -214,10 +214,16 @@ function initSockets(io) {
       }
 
       try {
-        const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
+        const convo = await db.prepare(`SELECT product_context, customer_id FROM conversations WHERE id = ?`).get(conversationId);
+        let customerContext = null;
+        if (convo?.customer_id) {
+          const rows = await db.prepare(`SELECT product_type FROM policies WHERE customer_id = ?`).all(convo.customer_id);
+          if (rows.length) customerContext = rows.map((r) => r.product_type.replace(/_/g, ' ')).join(', ');
+        }
         const guidance = await orchestrator.getLiveGuidance({
           text,
           productType: productType || convo?.product_context,
+          customerContext,
         });
         await adminAgent.logMessage({ conversationId, sender: 'customer', kind: 'transcript', content: text });
         await adminAgent.logGuidance(conversationId, guidance);

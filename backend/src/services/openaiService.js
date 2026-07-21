@@ -162,23 +162,34 @@ TRUST RULES - how to be trustworthy, not just pleasant. Customers trust honesty 
  * knowledge base entries, for live conversation guidance (face-to-face /
  * virtual call channels).
  */
-async function enhanceGuidance({ triggerText, productType, talkingPoints, webResults }) {
+async function enhanceGuidance({ triggerText, productType, talkingPoints, webResults, customerContext = null }) {
   if (!isEnabled()) return null;
   try {
     const openai = getClient();
     const approved = formatTalkingPointsForPrompt(talkingPoints);
     const web = formatWebResultsForPrompt(webResults);
+    const customer = customerContext
+      ? `This customer's own policies on file: ${customerContext}. If they asked what they have or what to review, use THESE facts to help the rep answer.`
+      : '(no customer policy details available)';
 
     const completion = await withTimeout(
       openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 160,
+        max_tokens: 180,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `Product context: ${productType || 'general'}\nWhat the customer / rep just said: "${triggerText}"\nTalking points available:\n${approved}\nWeb search results available:\n${web}\n\nWrite the plain-English explainer the rep could say next.`,
+            content: `Product context: ${productType || 'general'}
+What the customer / rep just said: "${triggerText}"
+${customer}
+Approved talking points available:
+${approved}
+Web search results available:
+${web}
+
+Write a short plain-English cue for the REP to say or do next. If no approved talking points matched, still help: use the customer's own policy facts above, explain the relevant concept simply, or suggest one clarifying question — never leave the rep with nothing.`,
           },
         ],
       }),

@@ -7,6 +7,29 @@ const openaiService = require('../services/openaiService');
 
 const router = express.Router();
 
+const PRODUCT_LABELS = {
+  life_insurance: 'Life insurance',
+  ilp: 'Investment-linked policy',
+  critical_illness: 'Critical illness',
+  integrated_shield_plan: 'Integrated Shield Plan',
+  retirement_cpf: 'Retirement / CPF LIFE',
+};
+
+/** Short summary of the customer's held policies, so live guidance can answer
+ *  "what insurance do I have / where are my gaps" from their real data. */
+async function buildCustomerContext(customerId) {
+  if (!customerId) return null;
+  try {
+    const rows = await db.prepare(`SELECT product_type, policy_number FROM policies WHERE customer_id = ?`).all(customerId);
+    if (!rows.length) return null;
+    return rows
+      .map((p) => `${PRODUCT_LABELS[p.product_type] || p.product_type}${p.policy_number ? ` (${p.policy_number})` : ''}`)
+      .join(', ');
+  } catch {
+    return null;
+  }
+}
+
 const audioUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
@@ -52,7 +75,12 @@ router.post('/live', async (req, res) => {
   if (!convo) return res.status(404).json({ error: 'Conversation not found' });
 
   try {
-    const guidance = await orchestrator.getLiveGuidance({ text, productType: productType || convo.product_context });
+    const customerContext = await buildCustomerContext(convo.customer_id);
+    const guidance = await orchestrator.getLiveGuidance({
+      text,
+      productType: productType || convo.product_context,
+      customerContext,
+    });
     await adminAgent.logMessage({ conversationId, sender: speaker === 'customer' ? 'customer' : 'agent', kind: 'transcript', content: text });
     await adminAgent.logGuidance(conversationId, guidance);
     res.json({ guidance });

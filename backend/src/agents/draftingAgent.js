@@ -60,12 +60,16 @@ const AGENT_NAME = 'Drafting Agent';
 
 /**
  * Plain-English explainer for live guidance (face-to-face / virtual call).
- * @param {{triggerText: string, productType: ?string, talkingPoints: Array, webResults?: Array}} input
+ * Always attempts an explainer when OpenAI is on — even with zero matched
+ * talking points — so a question the knowledge base doesn't directly cover
+ * (e.g. "what insurance do I have?") still gives the rep something useful,
+ * grounded in the customer's own policies.
+ * @param {{triggerText: string, productType: ?string, talkingPoints: Array, webResults?: Array, customerContext?: ?string}} input
  * @returns {Promise<?string>}
  */
-async function enhanceGuidance({ triggerText, productType, talkingPoints, webResults = [] }) {
-  if (!openaiService.isEnabled() || (talkingPoints.length === 0 && webResults.length === 0)) return null;
-  const explainer = await openaiService.enhanceGuidance({ triggerText, productType, talkingPoints, webResults });
+async function enhanceGuidance({ triggerText, productType, talkingPoints, webResults = [], customerContext = null }) {
+  if (!openaiService.isEnabled()) return null;
+  const explainer = await openaiService.enhanceGuidance({ triggerText, productType, talkingPoints, webResults, customerContext });
   console.log(`[${AGENT_NAME}] ${explainer ? 'produced AI explainer' : 'AI explainer unavailable, using approved message only'}`);
   return explainer;
 }
