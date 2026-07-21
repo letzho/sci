@@ -16,11 +16,12 @@ export default function AgentLayout() {
   const [gamification, setGamification] = useState(null);
 
   useEffect(() => {
+    if (!agent?.id) return;
     api
       .get('/metrics')
       .then((res) => setGamification(mergeGamification(res.data.gamification, bonusXp)))
       .catch(() => {});
-  }, [bonusXp]);
+  }, [agent?.id, bonusXp]);
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -32,47 +32,77 @@ async function logGuidance(conversationId, guidance) {
 }
 
 /**
- * Computes the live "measurable impact" snapshot from real usage data.
+ * Computes the live "measurable impact" snapshot from real usage data
+ * for one agent account.
  */
-async function computeMetrics() {
-  const totalConversations = (await db.prepare(`SELECT COUNT(*) AS n FROM conversations`).get()).n;
+async function computeMetrics(agentId) {
+  const totalConversations = (await db.prepare(`SELECT COUNT(*) AS n FROM conversations WHERE agent_id = ?`).get(agentId)).n;
 
   const byChannelRows = await db
-    .prepare(`SELECT channel, COUNT(*) AS n FROM conversations GROUP BY channel`)
-    .all();
+    .prepare(`SELECT channel, COUNT(*) AS n FROM conversations WHERE agent_id = ? GROUP BY channel`)
+    .all(agentId);
   const byChannel = byChannelRows.reduce((acc, r) => ({ ...acc, [r.channel]: r.n }), { face_to_face: 0, virtual_call: 0, chat: 0 });
 
   const totalTalkingPoints = (await db
-    .prepare(`SELECT COUNT(*) AS n FROM guidance_events WHERE guidance_type = 'talking_point'`)
-    .get()).n;
+    .prepare(
+      `SELECT COUNT(*) AS n FROM guidance_events g
+       JOIN conversations c ON c.id = g.conversation_id
+       WHERE c.agent_id = ? AND g.guidance_type = 'talking_point'`
+    )
+    .get(agentId)).n;
 
   const totalComplianceFlags = (await db
-    .prepare(`SELECT COUNT(*) AS n FROM guidance_events WHERE guidance_type = 'compliance_flag'`)
-    .get()).n;
+    .prepare(
+      `SELECT COUNT(*) AS n FROM guidance_events g
+       JOIN conversations c ON c.id = g.conversation_id
+       WHERE c.agent_id = ? AND g.guidance_type = 'compliance_flag'`
+    )
+    .get(agentId)).n;
 
   const flagsBySeverityRows = await db
     .prepare(
-      `SELECT severity, COUNT(*) AS n FROM guidance_events WHERE guidance_type = 'compliance_flag' GROUP BY severity`
+      `SELECT g.severity, COUNT(*) AS n FROM guidance_events g
+       JOIN conversations c ON c.id = g.conversation_id
+       WHERE c.agent_id = ? AND g.guidance_type = 'compliance_flag'
+       GROUP BY g.severity`
     )
-    .all();
+    .all(agentId);
   const flagsBySeverity = flagsBySeverityRows.reduce((acc, r) => ({ ...acc, [r.severity]: r.n }), { high: 0, medium: 0, low: 0 });
 
   const topTopics = await db
     .prepare(
-      `SELECT title, COUNT(*) AS n FROM guidance_events WHERE guidance_type = 'talking_point' GROUP BY title ORDER BY n DESC LIMIT 5`
+      `SELECT g.title, COUNT(*) AS n FROM guidance_events g
+       JOIN conversations c ON c.id = g.conversation_id
+       WHERE c.agent_id = ? AND g.guidance_type = 'talking_point'
+       GROUP BY g.title ORDER BY n DESC LIMIT 5`
     )
-    .all();
+    .all(agentId);
 
   const topFlags = await db
     .prepare(
-      `SELECT title, COUNT(*) AS n FROM guidance_events WHERE guidance_type = 'compliance_flag' GROUP BY title ORDER BY n DESC LIMIT 5`
+      `SELECT g.title, COUNT(*) AS n FROM guidance_events g
+       JOIN conversations c ON c.id = g.conversation_id
+       WHERE c.agent_id = ? AND g.guidance_type = 'compliance_flag'
+       GROUP BY g.title ORDER BY n DESC LIMIT 5`
     )
-    .all();
+    .all(agentId);
 
-  const totalMessages = (await db.prepare(`SELECT COUNT(*) AS n FROM messages`).get()).n;
-  const draftsReviewed = (await db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE kind = 'draft'`).get()).n;
+  const totalMessages = (await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.agent_id = ?`
+    )
+    .get(agentId)).n;
+  const draftsReviewed = (await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.agent_id = ? AND m.kind = 'draft'`
+    )
+    .get(agentId)).n;
 
-  console.log(`[${AGENT_NAME}] computed impact metrics snapshot (${totalConversations} conversation(s))`);
+  console.log(`[${AGENT_NAME}] computed impact metrics snapshot for agent ${agentId} (${totalConversations} conversation(s))`);
 
   return {
     totalConversations,

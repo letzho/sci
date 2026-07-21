@@ -6,7 +6,8 @@ const db = require('../db/connection');
  * Turns the same real usage data behind the Impact dashboard into a
  * level/XP/streak/badge system, so reps get a lightweight, motivating sense
  * of progress while they work - never anything fabricated, and never shown
- * to the customer. Every figure here is derived from live DB activity.
+ * to the customer. Every figure here is derived from live DB activity
+ * scoped to the logged-in agent.
  */
 
 const LEVELS = [
@@ -45,7 +46,7 @@ function levelForXp(xp) {
  * compliance flags, counting back from the latest session. Rewards
  * consistently clean, well-guided conversations - not just volume.
  */
-async function computeCleanStreak() {
+async function computeCleanStreak(agentId) {
   const rows = await db
     .prepare(
       `SELECT c.id,
@@ -53,9 +54,10 @@ async function computeCleanStreak() {
           WHERE g.conversation_id = c.id AND g.guidance_type = 'compliance_flag' AND g.severity = 'high'
         ) AS highFlags
        FROM conversations c
+       WHERE c.agent_id = ?
        ORDER BY c.started_at DESC`
     )
-    .all();
+    .all(agentId);
 
   let streak = 0;
   for (const row of rows) {
@@ -65,17 +67,27 @@ async function computeCleanStreak() {
   return streak;
 }
 
-async function computeGamification() {
-  const totalConversations = (await db.prepare(`SELECT COUNT(*) AS n FROM conversations`).get()).n;
+async function computeGamification(agentId) {
+  const totalConversations = (await db.prepare(`SELECT COUNT(*) AS n FROM conversations WHERE agent_id = ?`).get(agentId)).n;
   const totalTalkingPoints = (await db
-    .prepare(`SELECT COUNT(*) AS n FROM guidance_events WHERE guidance_type = 'talking_point'`)
-    .get()).n;
-  const draftsReviewed = (await db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE kind = 'draft'`).get()).n;
+    .prepare(
+      `SELECT COUNT(*) AS n FROM guidance_events g
+       JOIN conversations c ON c.id = g.conversation_id
+       WHERE c.agent_id = ? AND g.guidance_type = 'talking_point'`
+    )
+    .get(agentId)).n;
+  const draftsReviewed = (await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.agent_id = ? AND m.kind = 'draft'`
+    )
+    .get(agentId)).n;
   const byChannelRows = await db
-    .prepare(`SELECT channel, COUNT(*) AS n FROM conversations GROUP BY channel`)
-    .all();
+    .prepare(`SELECT channel, COUNT(*) AS n FROM conversations WHERE agent_id = ? GROUP BY channel`)
+    .all(agentId);
   const byChannel = byChannelRows.reduce((acc, r) => ({ ...acc, [r.channel]: r.n }), { face_to_face: 0, virtual_call: 0, chat: 0 });
-  const cleanStreak = await computeCleanStreak();
+  const cleanStreak = await computeCleanStreak(agentId);
   const channelsUsed = Object.values(byChannel).filter((n) => n > 0).length;
 
   const xp = totalConversations * 25 + totalTalkingPoints * 4 + draftsReviewed * 3 + cleanStreak * 5;

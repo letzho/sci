@@ -1,22 +1,36 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useAuth } from './AuthContext.jsx';
 
-const STORAGE_KEY = 'sci_practice_bonus_xp';
+function storageKey(agentId) {
+  return agentId ? `sci_practice_bonus_xp_${agentId}` : null;
+}
 
 const GamificationBonusContext = createContext(null);
 
 export function GamificationBonusProvider({ children }) {
-  const [bonusXp, setBonusXp] = useState(() => Number(localStorage.getItem(STORAGE_KEY) || 0));
+  const { agent } = useAuth();
+  const [bonusXp, setBonusXp] = useState(0);
   const [xpBurst, setXpBurst] = useState(null);
 
-  const awardPracticeXp = useCallback((amount = 50, label = '+50 XP') => {
-    setBonusXp((prev) => {
-      const next = prev + amount;
-      localStorage.setItem(STORAGE_KEY, String(next));
-      return next;
-    });
-    setXpBurst({ amount, label, id: Date.now() });
-    setTimeout(() => setXpBurst(null), 2800);
-  }, []);
+  useEffect(() => {
+    const key = storageKey(agent?.id);
+    setBonusXp(key ? Number(localStorage.getItem(key) || 0) : 0);
+  }, [agent?.id]);
+
+  const awardPracticeXp = useCallback(
+    (amount = 50, label = '+50 XP') => {
+      const key = storageKey(agent?.id);
+      if (!key) return;
+      setBonusXp((prev) => {
+        const next = prev + amount;
+        localStorage.setItem(key, String(next));
+        return next;
+      });
+      setXpBurst({ amount, label, id: Date.now() });
+      setTimeout(() => setXpBurst(null), 2800);
+    },
+    [agent?.id]
+  );
 
   const value = useMemo(() => ({ bonusXp, awardPracticeXp, xpBurst }), [bonusXp, awardPracticeXp, xpBurst]);
 
