@@ -24,7 +24,12 @@ const upload = multer({
 
 router.get('/', requireAuth, async (req, res) => {
   const { productType } = req.query;
-  res.json({ documents: await documentService.listDocuments({ productType: productType || undefined }) });
+  res.json({
+    documents: await documentService.listDocuments({
+      productType: productType || undefined,
+      agentId: req.agent.id,
+    }),
+  });
 });
 
 router.post('/', requireAuth, (req, res) => {
@@ -75,7 +80,7 @@ router.post('/url', requireAuth, async (req, res) => {
 });
 
 router.delete('/:id', requireAuth, async (req, res) => {
-  const deleted = await documentService.deleteDocument(req.params.id);
+  const deleted = await documentService.deleteDocument(req.params.id, req.agent.id);
   if (!deleted) return res.status(404).json({ error: 'Document not found' });
   res.json({ ok: true });
 });

@@ -167,6 +167,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_kb_product ON knowledge_base(product_type);
     CREATE INDEX IF NOT EXISTS idx_rules_product ON compliance_rules(product_type);
     CREATE INDEX IF NOT EXISTS idx_learned_docs_product ON learned_documents(product_type);
+    CREATE INDEX IF NOT EXISTS idx_learned_docs_agent ON learned_documents(agent_id);
     CREATE INDEX IF NOT EXISTS idx_learned_chunks_doc ON learned_chunks(document_id);
     CREATE INDEX IF NOT EXISTS idx_learned_chunks_product ON learned_chunks(product_type);
   `);

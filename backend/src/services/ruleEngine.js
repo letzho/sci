@@ -138,7 +138,8 @@ const LEARNED_SELECT = `SELECT lc.*, ld.filename, ld.title, ld.source_type, ld.s
  * @param {{ comparisonMode?: boolean }} options
  */
 async function findLearnedTalkingPoints(text, productType, limit = 4, options = {}) {
-  const { comparisonMode = false } = options;
+  const { comparisonMode = false, agentId } = options;
+  if (!agentId) return [];
   if (!text || !text.trim()) return [];
 
   const queryTokens = new Set(tokenize(text));
@@ -146,10 +147,13 @@ async function findLearnedTalkingPoints(text, productType, limit = 4, options = 
 
   const { chunkLooksLikeComparisonTable } = require('./comparisonQuery');
 
+  const agentClause = ` AND ld.agent_id = ?`;
+  const baseParams = [agentId];
+
   // Comparison questions: search all products so a CI URL isn't hidden by session product type.
   const rows = await (comparisonMode || !productType
-    ? db.prepare(`${LEARNED_SELECT}`).all()
-    : db.prepare(`${LEARNED_SELECT} AND (lc.product_type IS NULL OR lc.product_type = ?)`).all(productType));
+    ? db.prepare(`${LEARNED_SELECT}${agentClause}`).all(...baseParams)
+    : db.prepare(`${LEARNED_SELECT}${agentClause} AND (lc.product_type IS NULL OR lc.product_type = ?)`).all(...baseParams, productType));
 
   const scored = [];
   for (const row of rows) {

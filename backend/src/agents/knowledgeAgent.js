@@ -34,7 +34,7 @@ function filterGenericCompareApproved(approved, learned) {
 /**
  * @param {{text: string, productType: ?string, limit?: number, preferLearned?: boolean}} input
  */
-async function findTalkingPoints({ text, productType, limit = DEFAULT_LIMIT, preferLearned = false }) {
+async function findTalkingPoints({ text, productType, limit = DEFAULT_LIMIT, preferLearned = false, agentId }) {
   const comparisonMode = isComparisonQuery(text);
   const searchProductType = comparisonMode ? inferCompareProductType(text, productType) : productType;
   const searchText = comparisonMode ? expandCompareSearchText(text, searchProductType) : text;
@@ -54,6 +54,7 @@ async function findTalkingPoints({ text, productType, limit = DEFAULT_LIMIT, pre
     limit: learnedLimit + 3,
     minSimilarity: semanticMin,
     comparisonMode,
+    agentId,
   });
 
   let learned;
@@ -62,6 +63,7 @@ async function findTalkingPoints({ text, productType, limit = DEFAULT_LIMIT, pre
     // Embeddings unavailable (no API key) — deterministic keyword matching only.
     learned = await ruleEngine.findLearnedTalkingPoints(searchText, searchProductType, learnedLimit, {
       comparisonMode,
+      agentId,
     });
     learnedVia = 'keyword';
   } else {
@@ -70,6 +72,7 @@ async function findTalkingPoints({ text, productType, limit = DEFAULT_LIMIT, pre
     // already covered by the semantic entry, so we just skip the duplicate.
     const keyword = await ruleEngine.findLearnedTalkingPoints(searchText, searchProductType, learnedLimit + 3, {
       comparisonMode,
+      agentId,
     });
     const semanticIds = new Set(semantic.map((s) => s.id));
     const keywordExtras = keyword.filter((k) => !semanticIds.has(k.id));

@@ -229,7 +229,8 @@ export default function KnowledgeLibrary() {
         <p className="text-xs text-slate-400 mb-3">
           Product summaries, fact sheets, fund prospectuses, or a public link (an insurer's product page, MAS/CPF
           guidance). The AI will use short excerpts as extra reference material - clearly labelled "from your
-          document" - only when approved messaging doesn't already cover the question.
+          document" - only when approved messaging doesn't already cover the question. Uploads are private to your
+          account; other representatives cannot see or use your documents.
         </p>
 
         <div className="flex flex-wrap items-center gap-2 mb-3">

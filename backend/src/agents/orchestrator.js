@@ -49,7 +49,7 @@ function buildFallbackExplainer({ text, customerContext, productType }) {
   return `No approved talking point matched exactly. Answer from what you know about ${label}, or ask one clarifying question to pull up the right detail — keep the conversation moving.`;
 }
 
-async function getLiveGuidance({ text, productType, customerContext = null }) {
+async function getLiveGuidance({ text, productType, customerContext = null, agentId }) {
   const compareQuestion = isComparisonQuery(text);
   const nlu = await nluAgent.analyze({
     text,
@@ -60,6 +60,7 @@ async function getLiveGuidance({ text, productType, customerContext = null }) {
     productType: nlu.productType,
     preferLearned: compareQuestion,
     limit: compareQuestion ? 8 : 5,
+    agentId,
   });
   const complianceFlags = await complianceAgent.checkCompliance({ text: nlu.text, productType: nlu.productType });
   const webResults = await researchAgent.supplement({ text: nlu.text, productType: nlu.productType, talkingPoints });
@@ -98,7 +99,7 @@ async function getLiveGuidance({ text, productType, customerContext = null }) {
   };
 }
 
-async function getChatDraft({ customerMessage, productType, conversationId }) {
+async function getChatDraft({ customerMessage, productType, conversationId, agentId }) {
   const rawPolicyContext = conversationId ? await loadPolicyContext(conversationId) : null;
   const hasPolicyDoc = Boolean(rawPolicyContext);
   const recentHistory = conversationId ? await loadRecentChatHistory(conversationId, 6) : [];
@@ -123,6 +124,7 @@ async function getChatDraft({ customerMessage, productType, conversationId }) {
     productType: nlu.productType,
     preferLearned: hasPolicyDoc || compareQuestion,
     limit: compareQuestion ? 8 : 6,
+    agentId,
   });
 
   if (hasPolicyDoc && !compareQuestion) {

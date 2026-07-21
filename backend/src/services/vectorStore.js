@@ -56,13 +56,16 @@ async function embedAndStoreChunk(chunkId, text) {
  *   signal callers use to fall back to keyword matching instead of treating
  *   "no embeddings yet" the same as "no semantic match found".
  */
-async function semanticSearch({ text, productType, limit = 4, minSimilarity = 0.65, comparisonMode = false }) {
-  if (!openaiService.isEnabled() || !text || !text.trim()) return null;
+async function semanticSearch({ text, productType, limit = 4, minSimilarity = 0.65, comparisonMode = false, agentId }) {
+  if (!openaiService.isEnabled() || !text || !text.trim() || !agentId) return null;
 
   const queryVector = await openaiService.embedText(text);
   if (!queryVector) return null;
 
   const { chunkLooksLikeComparisonTable } = require('./comparisonQuery');
+
+  const agentClause = ` AND ld.agent_id = ?`;
+  const baseParams = [agentId];
 
   const rows = await (comparisonMode || !productType
     ? db
@@ -70,17 +73,17 @@ async function semanticSearch({ text, productType, limit = 4, minSimilarity = 0.
           `SELECT lc.*, ld.filename, ld.title, ld.source_type, ld.source_url
            FROM learned_chunks lc
            JOIN learned_documents ld ON ld.id = lc.document_id
-           WHERE ld.status = 'active' AND lc.embedding IS NOT NULL`
+           WHERE ld.status = 'active' AND lc.embedding IS NOT NULL${agentClause}`
         )
-        .all()
+        .all(...baseParams)
     : db
         .prepare(
           `SELECT lc.*, ld.filename, ld.title, ld.source_type, ld.source_url
            FROM learned_chunks lc
            JOIN learned_documents ld ON ld.id = lc.document_id
-           WHERE ld.status = 'active' AND lc.embedding IS NOT NULL AND (lc.product_type IS NULL OR lc.product_type = ?)`
+           WHERE ld.status = 'active' AND lc.embedding IS NOT NULL${agentClause} AND (lc.product_type IS NULL OR lc.product_type = ?)`
         )
-        .all(productType));
+        .all(...baseParams, productType));
 
   if (rows.length === 0) return [];
 

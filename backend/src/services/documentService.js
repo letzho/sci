@@ -156,20 +156,29 @@ function mapDocument(row) {
   };
 }
 
-async function getDocument(id) {
+async function getDocument(id, agentId) {
   const row = await db.prepare(`SELECT * FROM learned_documents WHERE id = ?`).get(id);
-  return row ? mapDocument(row) : null;
+  if (!row) return null;
+  if (agentId && row.agent_id !== agentId) return null;
+  return mapDocument(row);
 }
 
-async function listDocuments({ productType } = {}) {
-  const rows = await (productType
-    ? db.prepare(`SELECT * FROM learned_documents WHERE product_type = ? ORDER BY created_at DESC`).all(productType)
-    : db.prepare(`SELECT * FROM learned_documents ORDER BY created_at DESC`).all());
+async function listDocuments({ productType, agentId } = {}) {
+  if (!agentId) return [];
+  const params = [agentId];
+  let sql = `SELECT * FROM learned_documents WHERE agent_id = ?`;
+  if (productType) {
+    sql += ` AND product_type = ?`;
+    params.push(productType);
+  }
+  sql += ` ORDER BY created_at DESC`;
+  const rows = await db.prepare(sql).all(...params);
   return rows.map(mapDocument);
 }
 
-async function deleteDocument(id) {
-  const info = await db.prepare(`DELETE FROM learned_documents WHERE id = ?`).run(id);
+async function deleteDocument(id, agentId) {
+  if (!agentId) return false;
+  const info = await db.prepare(`DELETE FROM learned_documents WHERE id = ? AND agent_id = ?`).run(id, agentId);
   return info.changes > 0;
 }
 

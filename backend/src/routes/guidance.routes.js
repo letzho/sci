@@ -80,6 +80,7 @@ router.post('/live', async (req, res) => {
       text,
       productType: productType || convo.product_context,
       customerContext,
+      agentId: convo.agent_id,
     });
     await adminAgent.logMessage({ conversationId, sender: speaker === 'customer' ? 'customer' : 'agent', kind: 'transcript', content: text });
     await adminAgent.logGuidance(conversationId, guidance);
@@ -108,6 +109,7 @@ router.post('/chat-draft', async (req, res) => {
       customerMessage,
       productType: productType || convo.product_context,
       conversationId,
+      agentId: convo.agent_id,
     });
     await adminAgent.logMessage({ conversationId, sender: 'customer', kind: 'text', content: customerMessage });
     await adminAgent.logMessage({ conversationId, sender: 'ai', kind: 'draft', content: draft.draftReply });

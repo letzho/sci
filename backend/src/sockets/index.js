@@ -214,7 +214,7 @@ function initSockets(io) {
       }
 
       try {
-        const convo = await db.prepare(`SELECT product_context, customer_id FROM conversations WHERE id = ?`).get(conversationId);
+        const convo = await db.prepare(`SELECT product_context, customer_id, agent_id FROM conversations WHERE id = ?`).get(conversationId);
         let customerContext = null;
         if (convo?.customer_id) {
           const rows = await db.prepare(`SELECT product_type FROM policies WHERE customer_id = ?`).all(convo.customer_id);
@@ -224,6 +224,7 @@ function initSockets(io) {
           text,
           productType: productType || convo?.product_context,
           customerContext,
+          agentId: convo?.agent_id,
         });
         await adminAgent.logMessage({ conversationId, sender: 'customer', kind: 'transcript', content: text });
         await adminAgent.logGuidance(conversationId, guidance);
@@ -252,11 +253,12 @@ function initSockets(io) {
           io.to(room.agentSocketId).emit('understanding-signal', { confusion: { strength: confusion.strength, text }, at: new Date().toISOString() });
         }
         try {
-          const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
+          const convo = await db.prepare(`SELECT product_context, agent_id FROM conversations WHERE id = ?`).get(conversationId);
           const draft = await orchestrator.getChatDraft({
             customerMessage: text,
             productType: productType || convo?.product_context,
             conversationId,
+            agentId: convo?.agent_id,
           });
           await adminAgent.logMessage({ conversationId, sender: 'ai', kind: 'draft', content: draft.draftReply });
 
@@ -307,11 +309,12 @@ function initSockets(io) {
       // Prepare simpler re-explanation options for the rep (clarify mode kicks in
       // because the synthetic message reads as a clarification request).
       try {
-        const convo = await db.prepare(`SELECT product_context FROM conversations WHERE id = ?`).get(conversationId);
+        const convo = await db.prepare(`SELECT product_context, agent_id FROM conversations WHERE id = ?`).get(conversationId);
         const draft = await orchestrator.getChatDraft({
           customerMessage: "Can you explain that in simpler terms? I didn't understand.",
           productType: convo?.product_context,
           conversationId,
+          agentId: convo?.agent_id,
         });
         agentSockets.forEach((s) => s.emit('chat-draft', { draft, clarityTriggered: feedback }));
       } catch (err) {
