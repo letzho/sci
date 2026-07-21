@@ -30,6 +30,7 @@ async function clearAll() {
     DELETE FROM guidance_events;
     DELETE FROM messages;
     DELETE FROM policy_uploads;
+    DELETE FROM policy_comparisons;
     DELETE FROM financial_plans;
     DELETE FROM appointments;
     DELETE FROM agent_blocked_dates;

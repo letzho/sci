@@ -3,6 +3,8 @@ const multer = require('multer');
 const db = require('../db/connection');
 const documentService = require('../services/documentService');
 const openaiService = require('../services/openaiService');
+const policyComparisonService = require('../services/policyComparisonService');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -12,12 +14,31 @@ const comparisonUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: MAX_COMPARE_FILES },
 });
 
+/** Saved comparisons for the signed-in agent only. */
+router.get('/comparisons', requireAuth, async (req, res) => {
+  const comparisons = await policyComparisonService.listComparisons(req.agent.id);
+  res.json({ comparisons });
+});
+
+router.get('/comparisons/:id', requireAuth, async (req, res) => {
+  const comparison = await policyComparisonService.getComparison(req.params.id, req.agent.id);
+  if (!comparison) return res.status(404).json({ error: 'Comparison not found' });
+  res.json({ comparison });
+});
+
+router.delete('/comparisons/:id', requireAuth, async (req, res) => {
+  const deleted = await policyComparisonService.deleteComparison(req.params.id, req.agent.id);
+  if (!deleted) return res.status(404).json({ error: 'Comparison not found' });
+  res.json({ ok: true });
+});
+
 /**
- * Drag-drop policy comparison. The rep drops 2-4 policy PDFs (possibly from
+ * Drag-drop policy comparison. The rep drops 2-8 policy PDFs (possibly from
  * different insurers); each is parsed to text and the AI returns a normalized,
  * side-by-side comparison table of objective facts — never a recommendation.
+ * Results are saved privately for the signed-in agent only.
  */
-router.post('/compare', (req, res) => {
+router.post('/compare', requireAuth, (req, res) => {
   comparisonUpload.array('files', MAX_COMPARE_FILES)(req, res, async (uploadErr) => {
     if (uploadErr) return res.status(400).json({ error: uploadErr.message || 'Upload failed' });
     const files = req.files || [];
@@ -52,7 +73,15 @@ router.post('/compare', (req, res) => {
       const comparison = await openaiService.comparePolicyDocuments(documents);
       if (!comparison) return res.status(422).json({ error: 'Could not build a comparison from these documents.' });
 
-      res.json({ comparison, failed });
+      const fileNames = files.map((f) => f.originalname);
+      const saved = await policyComparisonService.saveComparison({
+        agentId: req.agent.id,
+        comparison,
+        fileNames,
+        failed,
+      });
+
+      res.json({ comparison, failed, savedId: saved.id });
     } catch (err) {
       console.error('[policies.routes] /compare error:', err);
       res.status(500).json({ error: 'Comparison failed' });

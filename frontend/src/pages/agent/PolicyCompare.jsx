@@ -20,6 +20,7 @@ export default function PolicyCompare() {
         <p className="text-sm text-slate-500 mt-1">
           Drop policy documents from different insurers and let AI lay out the differences side by side —
           premium, coverage, term, exclusions and more. Objective facts only; it never recommends a policy.
+          Each comparison is private to your account.
         </p>
       </div>
 

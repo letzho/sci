@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const jwt = require('jsonwebtoken');
 const db = require('../db/connection');
 const { genId } = require('../utils/idGen');
 const documentService = require('../services/documentService');
@@ -7,6 +8,7 @@ const interpreterAgent = require('../agents/interpreterAgent');
 const { inferDocumentProductType } = require('../services/policyContext');
 const policyDocumentIndex = require('../services/policyDocumentIndex');
 const adminAgent = require('../agents/adminAgent');
+const { JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -142,6 +144,21 @@ router.post('/', (req, res) => {
 router.get('/:id', async (req, res) => {
   const row = await db.prepare(`SELECT * FROM policy_uploads WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Upload not found' });
+
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      const convo = await db.prepare(`SELECT agent_id FROM conversations WHERE id = ?`).get(row.conversation_id);
+      if (!convo || convo.agent_id !== payload.id) {
+        return res.status(403).json({ error: 'Not authorized for this policy upload' });
+      }
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  }
+
   res.json({ upload: mapUpload(row) });
 });
 

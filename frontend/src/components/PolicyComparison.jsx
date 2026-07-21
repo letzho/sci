@@ -1,14 +1,68 @@
-import { useCallback, useRef, useState } from 'react';
-import { GitCompare, UploadCloud, FileText, X, Sparkles, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { GitCompare, UploadCloud, FileText, X, Sparkles, AlertTriangle, Trash2, Clock } from 'lucide-react';
 import api from '../api/client';
 import { Button, LoadingSpinner } from './ui.jsx';
 
 const MAX_FILES = 8;
 
+function ComparisonTable({ comparison, failed = [] }) {
+  return (
+    <div className="space-y-3">
+      {failed?.length > 0 && (
+        <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 p-2">
+          <AlertTriangle size={12} className="text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-[10px] text-amber-700">
+            Skipped: {failed.map((f) => f.name).join(', ')} (couldn't read text — likely scanned images).
+          </p>
+        </div>
+      )}
+
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[11px] border-collapse">
+          <thead>
+            <tr className="border-b border-slate-200">
+              <th className="text-left py-2 pr-2 text-slate-500 font-medium sticky left-0 bg-white">Attribute</th>
+              {comparison.policies.map((p, i) => (
+                <th key={i} className="text-left py-2 px-2 font-semibold text-slate-700 whitespace-nowrap min-w-[120px]">
+                  <div>{p.name}</div>
+                  {p.insurer && <div className="text-[9px] font-normal text-slate-400">{p.insurer}</div>}
+                  {p.productType && <div className="text-[9px] font-normal text-brand-500">{p.productType}</div>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {comparison.attributes.map((attr, r) => (
+              <tr key={r} className="border-b border-slate-50 align-top">
+                <td className="py-2 pr-2 font-medium text-slate-600 sticky left-0 bg-white">{attr.label}</td>
+                {attr.values.map((v, c) => (
+                  <td key={c} className="py-2 px-2 text-slate-600">
+                    {v == null || v === '' ? <span className="text-slate-300">—</span> : v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {comparison.summary && (
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
+          <p className="text-[11px] text-slate-600 leading-relaxed">{comparison.summary}</p>
+        </div>
+      )}
+
+      <p className="text-[10px] text-slate-400">
+        Objective facts extracted from the uploaded documents. This tool does not recommend a policy — verify figures against the original documents.
+      </p>
+    </div>
+  );
+}
+
 /**
  * Drag-and-drop policy comparison. The rep drops 2-8 policy PDFs (from any
  * insurer); the AI reads each and returns a normalized, side-by-side table of
- * objective facts. Compliance-safe: it lays out differences, never a "best" pick.
+ * objective facts. Comparisons are saved privately per agent account.
  */
 export default function PolicyComparison() {
   const [files, setFiles] = useState([]);
@@ -16,7 +70,26 @@ export default function PolicyComparison() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [saved, setSaved] = useState([]);
+  const [loadingSaved, setLoadingSaved] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+  const [viewingSavedId, setViewingSavedId] = useState(null);
   const inputRef = useRef(null);
+
+  const loadSaved = useCallback(async () => {
+    try {
+      const res = await api.get('/policies/comparisons');
+      setSaved(res.data.comparisons || []);
+    } catch {
+      setSaved([]);
+    } finally {
+      setLoadingSaved(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSaved();
+  }, [loadSaved]);
 
   const addFiles = useCallback((incoming) => {
     const pdfs = Array.from(incoming).filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
@@ -57,6 +130,8 @@ export default function PolicyComparison() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(res.data);
+      setViewingSavedId(res.data.savedId || null);
+      loadSaved();
     } catch (err) {
       setError(err.response?.data?.error || 'Comparison failed. Check the backend is running with an OpenAI key.');
     } finally {
@@ -64,10 +139,32 @@ export default function PolicyComparison() {
     }
   }
 
+  function openSaved(item) {
+    setResult({ comparison: item.comparison, failed: item.failed || [] });
+    setViewingSavedId(item.id);
+    setFiles([]);
+    setError(null);
+  }
+
+  async function deleteSaved(id) {
+    setDeletingId(id);
+    try {
+      await api.delete(`/policies/comparisons/${id}`);
+      setSaved((prev) => prev.filter((s) => s.id !== id));
+      if (viewingSavedId === id) {
+        setResult(null);
+        setViewingSavedId(null);
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   function reset() {
     setFiles([]);
     setResult(null);
     setError(null);
+    setViewingSavedId(null);
   }
 
   const comparison = result?.comparison;
@@ -80,6 +177,7 @@ export default function PolicyComparison() {
       </div>
       <p className="text-[11px] text-slate-500">
         Drop 2-{MAX_FILES} policy PDFs (any insurer). AI lays out the differences side by side — objective facts only, never a recommendation.
+        Comparisons are saved to your account only; other representatives cannot see them.
       </p>
 
       {!comparison && (
@@ -141,6 +239,31 @@ export default function PolicyComparison() {
               </span>
             )}
           </Button>
+
+          {!loadingSaved && saved.length > 0 && (
+            <div className="pt-2 space-y-1.5">
+              <p className="text-[11px] font-medium text-slate-600 flex items-center gap-1">
+                <Clock size={12} /> Your saved comparisons
+              </p>
+              {saved.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+                  <button type="button" onClick={() => openSaved(item)} className="flex-1 min-w-0 text-left">
+                    <div className="text-[11px] font-medium text-slate-700 truncate">{item.title}</div>
+                    <div className="text-[10px] text-slate-400 truncate">{item.fileNames?.join(', ')}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteSaved(item.id)}
+                    disabled={deletingId === item.id}
+                    className="text-slate-400 hover:text-rose-500 p-1"
+                    aria-label="Delete comparison"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -153,54 +276,7 @@ export default function PolicyComparison() {
 
       {comparison && (
         <div className="space-y-3">
-          {result.failed?.length > 0 && (
-            <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 p-2">
-              <AlertTriangle size={12} className="text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-[10px] text-amber-700">
-                Skipped: {result.failed.map((f) => f.name).join(', ')} (couldn't read text — likely scanned images).
-              </p>
-            </div>
-          )}
-
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-[11px] border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left py-2 pr-2 text-slate-500 font-medium sticky left-0 bg-white">Attribute</th>
-                  {comparison.policies.map((p, i) => (
-                    <th key={i} className="text-left py-2 px-2 font-semibold text-slate-700 whitespace-nowrap min-w-[120px]">
-                      <div>{p.name}</div>
-                      {p.insurer && <div className="text-[9px] font-normal text-slate-400">{p.insurer}</div>}
-                      {p.productType && <div className="text-[9px] font-normal text-brand-500">{p.productType}</div>}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {comparison.attributes.map((attr, r) => (
-                  <tr key={r} className="border-b border-slate-50 align-top">
-                    <td className="py-2 pr-2 font-medium text-slate-600 sticky left-0 bg-white">{attr.label}</td>
-                    {attr.values.map((v, c) => (
-                      <td key={c} className="py-2 px-2 text-slate-600">
-                        {v == null || v === '' ? <span className="text-slate-300">—</span> : v}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {comparison.summary && (
-            <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
-              <p className="text-[11px] text-slate-600 leading-relaxed">{comparison.summary}</p>
-            </div>
-          )}
-
-          <p className="text-[10px] text-slate-400">
-            Objective facts extracted from the uploaded documents. This tool does not recommend a policy — verify figures against the original documents.
-          </p>
-
+          <ComparisonTable comparison={comparison} failed={result?.failed} />
           <Button size="sm" variant="outline" onClick={reset} className="w-full">
             Compare different documents
           </Button>

@@ -1,9 +1,10 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const db = require('../db/connection');
 const { genId } = require('../utils/idGen');
 const openaiService = require('../services/openaiService');
 const { buildRecapContext } = require('../services/comprehensionService');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -57,6 +58,27 @@ function mapConversation(row) {
   };
 }
 
+/** When an agent token is present, ensure the conversation belongs to that agent. */
+function assertAgentOwnsConversation(req, convo) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (convo.agent_id !== payload.id) {
+      const err = new Error('Not authorized for this conversation');
+      err.status = 403;
+      throw err;
+    }
+    return payload;
+  } catch (err) {
+    if (err.status === 403) throw err;
+    const authErr = new Error('Invalid or expired token');
+    authErr.status = 401;
+    throw authErr;
+  }
+}
+
 /**
  * Creates a conversation, or returns the existing active one for the same
  * agent + customer + channel. This lets the Agent Console and the Client
@@ -101,10 +123,22 @@ router.get('/', async (req, res) => {
   const { agentId, customerId, status } = req.query;
   let sql = `SELECT * FROM conversations WHERE 1=1`;
   const params = [];
-  if (agentId) {
+
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      sql += ` AND agent_id = ?`;
+      params.push(payload.id);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  } else if (agentId) {
     sql += ` AND agent_id = ?`;
     params.push(agentId);
   }
+
   if (customerId) {
     sql += ` AND customer_id = ?`;
     params.push(customerId);
@@ -157,6 +191,12 @@ router.get('/history', requireAuth, async (req, res) => {
 router.get('/:id', async (req, res) => {
   const convo = await db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(req.params.id);
   if (!convo) return res.status(404).json({ error: 'Conversation not found' });
+
+  try {
+    assertAgentOwnsConversation(req, convo);
+  } catch (err) {
+    return res.status(err.status || 403).json({ error: err.message });
+  }
 
   const messageRows = await db
     .prepare(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`)

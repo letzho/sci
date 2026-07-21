@@ -187,6 +187,19 @@ async function initSchema() {
   await ensureColumn('customers', 'health_condition', 'TEXT');
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS policy_comparisons (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      comparison_json TEXT NOT NULL,
+      file_names_json TEXT,
+      failed_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (${db.NOW_EXPR})
+    );
+    CREATE INDEX IF NOT EXISTS idx_policy_comparisons_agent ON policy_comparisons(agent_id);
+  `);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS financial_plans (
       id TEXT PRIMARY KEY,
       customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
