@@ -93,6 +93,7 @@ export default function KnowledgeLibrary() {
   const [uploadProductType, setUploadProductType] = useState('');
   const [kbFilter, setKbFilter] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -118,24 +119,58 @@ export default function KnowledgeLibrary() {
     loadKb(kbFilter);
   }, [kbFilter, loadKb]);
 
-  async function handleFile(file) {
-    if (!file) return;
-    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
-      setUploadError('Please choose a PDF file.');
+  function isPdf(file) {
+    return /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+  }
+
+  async function uploadPdf(file) {
+    const formData = new FormData();
+    formData.append('pdf', file);
+    formData.append('productType', uploadProductType);
+    const res = await api.post('/documents', formData);
+    return res.data.document;
+  }
+
+  async function handleFiles(fileList) {
+    const allFiles = Array.from(fileList || []);
+    const pdfFiles = allFiles.filter(isPdf);
+    if (!pdfFiles.length) {
+      setUploadError('Please choose one or more PDF files.');
       return;
     }
+
+    const skipped = allFiles.length - pdfFiles.length;
     setUploading(true);
     setUploadError(null);
-    try {
-      const formData = new FormData();
-      formData.append('pdf', file);
-      formData.append('productType', uploadProductType);
-      const res = await api.post('/documents', formData);
-      setDocuments((prev) => [res.data.document, ...prev]);
-    } catch (err) {
-      setUploadError(err.response?.data?.error || 'Upload failed - please try again.');
-    } finally {
-      setUploading(false);
+    setUploadProgress({ done: 0, total: pdfFiles.length, currentName: pdfFiles[0].name });
+
+    const uploaded = [];
+    const errors = [];
+
+    for (let i = 0; i < pdfFiles.length; i++) {
+      const file = pdfFiles[i];
+      setUploadProgress({ done: i, total: pdfFiles.length, currentName: file.name });
+      try {
+        const doc = await uploadPdf(file);
+        uploaded.push(doc);
+        setDocuments((prev) => [doc, ...prev]);
+      } catch (err) {
+        errors.push(`${file.name}: ${err.response?.data?.error || 'Upload failed'}`);
+      }
+    }
+
+    setUploadProgress(null);
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    if (errors.length) {
+      const summary =
+        uploaded.length > 0
+          ? `${uploaded.length} uploaded, ${errors.length} failed — ${errors.join('; ')}`
+          : errors.join('; ');
+      setUploadError(summary);
+    } else if (skipped > 0) {
+      setUploadError(`${skipped} non-PDF file${skipped === 1 ? '' : 's'} skipped.`);
     }
   }
 
@@ -239,7 +274,7 @@ export default function KnowledgeLibrary() {
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              handleFile(e.dataTransfer.files?.[0]);
+              handleFiles(e.dataTransfer.files);
             }}
             className={`rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center px-4 py-6 ${styles.dropzone} ${
               dragOver ? styles.dropzoneActive : 'border-slate-200'
@@ -248,21 +283,26 @@ export default function KnowledgeLibrary() {
             {uploading ? (
               <>
                 <Loader2 size={22} className={`text-brand-500 mb-2 ${styles.spin}`} />
-                <p className="text-sm text-slate-500">Reading and chunking your PDF...</p>
+                <p className="text-sm text-slate-500">
+                  {uploadProgress
+                    ? `Reading ${uploadProgress.done + 1} of ${uploadProgress.total}: ${uploadProgress.currentName}`
+                    : 'Reading and chunking your PDFs…'}
+                </p>
               </>
             ) : (
               <>
                 <UploadCloud size={22} className="text-slate-300 mb-2" />
-                <p className="text-sm text-slate-500">Drag a PDF here, or</p>
+                <p className="text-sm text-slate-500">Drag PDFs here, or</p>
                 <Button variant="outline" size="sm" className="mt-2" onClick={() => fileInputRef.current?.click()}>
-                  Choose PDF
+                  Choose PDFs
                 </Button>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept=".pdf,application/pdf"
+                  multiple
                   className="hidden"
-                  onChange={(e) => handleFile(e.target.files?.[0])}
+                  onChange={(e) => handleFiles(e.target.files)}
                 />
               </>
             )}
